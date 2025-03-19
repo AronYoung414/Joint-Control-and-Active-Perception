@@ -31,7 +31,7 @@ class Environment:
         # Define observations
         self.observations = ['1', '2', '3', 'n']
         self.observations_size = len(self.observations)
-        self.obs_noise_robot = 0.1
+        self.obs_noise_stationary = 0.1
         self.obs_noise_UAV = 0.1
         
         # Define sensing actions
@@ -217,15 +217,15 @@ class Environment:
         else:
             return [self.observations[3]]
         
-    def emission_function_robot(self, state, sAct, o):
+    def emission_function_stationary(self, state, sAct, o):
         observation_set = self.observation_function_stationary(state, sAct)
         if o in observation_set:
             if o == self.observations[3] and len(observation_set) == 1:
                 return 1
             elif o == self.observations[3] and len(observation_set) == 2:
-                return self.obs_noise_robot
+                return self.obs_noise_stationary
             else:
-                return 1 - self.obs_noise_robot
+                return 1 - self.obs_noise_stationary
         else:
             return 0
         
