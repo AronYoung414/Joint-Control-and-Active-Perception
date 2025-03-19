@@ -30,7 +30,9 @@ class Environment:
                                         [(7, 3), (7, 4), (7, 5), (8, 3), (8, 4), (8, 5), (9, 3), (9, 4), (9, 5)]]
         # Define observations
         self.observations = ['1', '2', '3', 'n']
+        self.observations_UAV = ['U11', 'U12', 'U13', 'U21', 'U22', 'U23', 'U31', 'U32', 'U33', 'n']
         self.observations_size = len(self.observations)
+        self.observations_UAV_size = len(self.observations_UAV)
         self.obs_noise_stationary = 0.1
         self.obs_noise_UAV = 0.1
         
@@ -231,23 +233,37 @@ class Environment:
         
     def observation_function_UAV(self, gr_state, UAV_state):
         x, y = UAV_state
-        surrounding_area = {(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1]}
-        if state in surrounding_area:
-            return ['u', self.observations[3]]
+        gx, gy = gr_state
+        
+        relative_position = (gx - x, gy - y)
+
+        position_map = {
+        (-1, 1): "U11",
+        (0, 1): "U12",
+        (1, 1): "U13",
+        (-1, 0): "U21",
+        (0, 0): "U22",
+        (1, 0): "U23",
+        (-1, -1): "U31",
+        (0, -1): "U32",
+        (1, -1): "U33"
+        }
+
+        if relative_position in position_map:
+            return position_map[relative_position]        
         else:
-            return [self.observations[3]]
+            return [self.observations_UAV[9]]
             
     def emission_function_UAV(self, gr_state, UAV_state, o):
-        observation_set = self.observation_function_UAV(gr_state, UAV_state)
-        if o in observation_set:
-            if o == self.observations[3] and len(observation_set) == 1:
-                return 1
-            elif o == self.observations[3] and len(observation_set) == 2:
-                return self.obs_noise_UAV
-            else:
-                return 1 - self.obs_noise_UAV
-        else:
-            return 0
+        observation_pos = self.observation_function_UAV(gr_state, UAV_state)
+        # Define the 3x3 grid positions
+        position_map = {pos: 0 for pos in self.observations_UAV}
+
+        # Set probability 1 for the observed position
+        if observation_pos in position_map:
+            position_map[observation_pos] = 1 - obs_noise_UAV
+
+        return position_map
             
 if __name__ == "__main__":
     env = Environment()
