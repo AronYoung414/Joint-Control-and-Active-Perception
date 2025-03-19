@@ -31,7 +31,8 @@ class Environment:
         # Define observations
         self.observations = ['1', '2', '3', 'n']
         self.observations_size = len(self.observations)
-        self.obs_noise = 0.1
+        self.obs_noise_robot = 0.1
+        self.obs_noise_UAV = 0.1
         
         # Define sensing actions
         self.sensing_actions = ['1', '2', '3']
@@ -222,9 +223,9 @@ class Environment:
             if o == self.observations[3] and len(observation_set) == 1:
                 return 1
             elif o == self.observations[3] and len(observation_set) == 2:
-                return self.obs_noise
+                return self.obs_noise_robot
             else:
-                return 1 - self.obs_noise
+                return 1 - self.obs_noise_robot
         else:
             return 0
         
@@ -242,9 +243,9 @@ class Environment:
             if o == self.observations[3] and len(observation_set) == 1:
                 return 1
             elif o == self.observations[3] and len(observation_set) == 2:
-                return self.obs_noise
+                return self.obs_noise_UAV
             else:
-                return 1 - self.obs_noise
+                return 1 - self.obs_noise_UAV
         else:
             return 0
             
