@@ -28,6 +28,14 @@ class Environment:
         self.stationary_sensor_range = [[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0), (9, 0)], 
                                         [(3, 3), (3, 4), (3, 5), (4, 3), (4, 4), (4, 5), (5, 3), (5, 4), (5, 5)], 
                                         [(7, 3), (7, 4), (7, 5), (8, 3), (8, 4), (8, 5), (9, 3), (9, 4), (9, 5)]]
+        # Define observations
+        self.observations = ['1', '2', '3', 'n']
+        self.observations_size = len(self.observations)
+        self.obs_noise = 0.1
+        
+        # Define sensing actions
+        self.sensing_actions = ['1', '2', '3']
+        self.sensing_actions_size = len(self.sensing_actions)
         
         # Actions First index: down and up; Second index: right and left 
         self.actions_UAV = [(1, 0), (-1, 0), (0, 0), (0, 1), (0, -1)]           
@@ -195,8 +203,50 @@ class Environment:
                 # else:
                 #     print(f"Warning: next_state {s_prime} not found for (state {state}, action {action}).")
         return P_M_C
+    
+#============================================================================================  
 
+    def observation_function_stationary(self, state, sAct):
+        if state in self.stationary_sensor_range[0] and self.observations[0] == sAct:
+            return [self.observations[0], self.observations[3]]
+        elif state in self.stationary_sensor_range[1] and self.observations[1] == sAct:
+            return [self.observations[1], self.observations[3]]
+        elif state in self.stationary_sensor_range[2] and self.observations[2] == sAct:
+            return [self.observations[2], self.observations[3]]
+        else:
+            return [self.observations[3]]
+        
+    def emission_function_robot(self, state, sAct, o):
+        observation_set = self.observation_function_stationary(state, sAct)
+        if o in observation_set:
+            if o == self.observations[3] and len(observation_set) == 1:
+                return 1
+            elif o == self.observations[3] and len(observation_set) == 2:
+                return self.obs_noise
+            else:
+                return 1 - self.obs_noise
+        else:
+            return 0
+        
+    def observation_function_UAV(self, gr_state, UAV_state):
+        x, y = UAV_state
+        surrounding_area = {(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1]}
+        if state in surrounding_area:
+            return ['u', self.observations[3]]
+        else:
+            return [self.observations[3]]
             
+    def emission_function_UAV(self, gr_state, UAV_state, o):
+        observation_set = self.observation_function_UAV(gr_state, UAV_state)
+        if o in observation_set:
+            if o == self.observations[3] and len(observation_set) == 1:
+                return 1
+            elif o == self.observations[3] and len(observation_set) == 2:
+                return self.obs_noise
+            else:
+                return 1 - self.obs_noise
+        else:
+            return 0
             
 if __name__ == "__main__":
     env = Environment()
