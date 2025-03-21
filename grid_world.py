@@ -219,7 +219,7 @@ class Environment:
         else:
             return [self.observations[3]]
         
-    def emission_function_stationary(self, state, sAct, o):
+    def emission_function_stationary(self, state, sAct, o):      # E(o | s, a)
         observation_set = self.observation_function_stationary(state, sAct)
         if o in observation_set:
             if o == self.observations[3] and len(observation_set) == 1:
@@ -231,39 +231,25 @@ class Environment:
         else:
             return 0
         
-    def observation_function_UAV(self, gr_state, UAV_state):
+    def observation_function_UAV(self, gr_state, UAV_state): # 返回絕對位置, 不是相對位置
         x, y = UAV_state
         gx, gy = gr_state
         
-        relative_position = (gx - x, gy - y)
+        L_infinity_norm = np.max([abs(gx - x), abs(gy - y)])
+        print(L_infinity_norm)
 
-        position_map = {
-        (-1, 1): "U11",
-        (0, 1): "U12",
-        (1, 1): "U13",
-        (-1, 0): "U21",
-        (0, 0): "U22",
-        (1, 0): "U23",
-        (-1, -1): "U31",
-        (0, -1): "U32",
-        (1, -1): "U33"
-        }
-
-        if relative_position in position_map:
-            return position_map[relative_position]        
+        if L_infinity_norm <=1:
+            return gr_state       
         else:
-            return [self.observations_UAV[9]]
+            return None
             
-    def emission_function_UAV(self, gr_state, UAV_state, o):
+    def emission_function_UAV(self, gr_state, UAV_state, o):            # E(o | s)   UAV does not have action to select the sensors
         observation_pos = self.observation_function_UAV(gr_state, UAV_state)
-        # Define the 3x3 grid positions
-        position_map = {pos: 0 for pos in self.observations_UAV}
-
         # Set probability 1 for the observed position
-        if observation_pos in position_map:
-            position_map[observation_pos] = 1 - obs_noise_UAV
-
-        return position_map
+        if observation_pos is o:
+            return 1 - self.obs_noise_UAV  # 0.9 對上 0.1 如果沒對上  
+        else:
+            return self.obs_noise_UAV
             
 if __name__ == "__main__":
     env = Environment()
@@ -290,8 +276,14 @@ if __name__ == "__main__":
     
     
     # Check Policy-induced Markov chain
-    current_state = (2, 1)
-    next_state = (2, 0)
-    print(env.robot_normal_P_M_C[current_state][next_state])
-    print(env.robot_adversarial_P_M_C[current_state][next_state])
+    # current_state = (2, 1)
+    # next_state = (2, 0)
+    # print(env.robot_normal_P_M_C[current_state][next_state])
+    # print(env.robot_adversarial_P_M_C[current_state][next_state])
     
+    
+    # Check observation and emission functions
+    UAV_state = (3, 3)
+    Robot_state = (3, 2)
+    observation = (3, 2)
+    print(env.emission_function_UAV(Robot_state, UAV_state, observation))
