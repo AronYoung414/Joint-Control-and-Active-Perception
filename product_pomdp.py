@@ -13,7 +13,7 @@ class prod_pomdp:
 
     def __init__(self):
         # Define states
-        self.states = [(pomdp_st, dfa_st) for pomdp_st, dfa_st in product(pomdp.states, dfa.states)]
+        self.states = [(pomdp_st, dfa_st) for pomdp_st, dfa_st in product(pomdp.states, dfa.states)] + ['sink']
         self.state_indices = list(range(len(self.states)))
         self.state_size = len(self.states)
         # Goals
@@ -41,9 +41,14 @@ class prod_pomdp:
         for st in self.states:
             next_supp[st] = {}
             for act in self.actions:
-                input_index = dfa.input_symbols.index(pomdp.label_func[st[0]])
-                dfa_st_prime = dfa.transition[st[1]][input_index]
-                next_supp[st][act] = [(pomdp_st_prime, dfa_st_prime) for pomdp_st_prime in pomdp.next_supp[st[0]][act]]
+                if st == 'sink':
+                    next_supp[st][act] = ['sink']
+                elif st in self.goals:
+                    next_supp[st][act] = ['sink']
+                else:
+                    input_index = dfa.input_symbols.index(pomdp.label_func[st[0]])
+                    dfa_st_prime = dfa.transition[st[1]][input_index]
+                    next_supp[st][act] = [(pomdp_st_prime, dfa_st_prime) for pomdp_st_prime in pomdp.next_supp[st[0]][act]]
         return next_supp
 
     def get_transition(self):
@@ -53,7 +58,12 @@ class prod_pomdp:
             for act in self.actions:
                 trans[st][act] = {}
                 for st_prime in self.next_supp[st][act]:
-                    trans[st][act][st_prime] = pomdp.transition[st[0]][act][st_prime[0]]
+                    if st == 'sink':
+                        trans[st][act][st_prime] = 1
+                    elif st in self.goals:
+                        trans[st][act][st_prime] = 1
+                    else:
+                        trans[st][act][st_prime] = pomdp.transition[st[0]][act][st_prime[0]]
         return trans
 
     def check_the_transition(self):
@@ -71,7 +81,10 @@ class prod_pomdp:
         for st in self.states:
             obs_dict[st] = {}
             for act in self.actions:
-                obs_dict[st][act] = pomdp.obs_dict[st[0]][act]
+                if st == 'sink':
+                    obs_dict[st][act] = ['n']
+                else:
+                    obs_dict[st][act] = pomdp.obs_dict[st[0]][act]
         return obs_dict
 
     def get_emission_function(self):
@@ -81,7 +94,10 @@ class prod_pomdp:
             for act in self.actions:
                 emiss[st][act] = {}
                 for obs in self.obs_dict[st][act]:
-                    emiss[st][act][obs] = pomdp.emiss[st[0]][act][obs]
+                    if st == 'sink':
+                        emiss[st][act][obs] = 1
+                    else:
+                        emiss[st][act][obs] = pomdp.emiss[st[0]][act][obs]
         return emiss
 
     def get_initial_distribution(self):

@@ -1,7 +1,7 @@
 from itertools import product
-from graph_example import graph
+from graph_example import self
 
-graph = graph()
+graph = self()
 
 
 class pomdp:
@@ -9,7 +9,8 @@ class pomdp:
     def __init__(self):
         # Define states
         # Here tau = 0 (L(s) = !t) means nominal agent and tau = 1 (L(s) = t) means adversary
-        self.states = [(gr_st, uav_st, tau) for gr_st, uav_st, tau in product(graph.gr_states, graph.uav_states, [0, 1])]
+        self.states = [(gr_st, uav_st, tau) for gr_st, uav_st, tau in
+                       product(graph.gr_states, graph.uav_states, [0, 1])]
         # self.state_indices = list(range(len(self.states)))
         # self.state_size = len(self.states)
         # Define initial state
@@ -24,13 +25,13 @@ class pomdp:
         self.transition = self.get_transition()
         self.check_the_transition()
         # Define UAV with sensors
-        self.obs_noise = 0.1 # the noise of sensors
+        self.obs_noise = 0.1  # the noise of sensors
         # Define observations
         self.observations = ['0', '1', '2', '3', '4', '5', 'n']
         self.obs_dict = self.get_observation_dictionary()
         self.emiss = self.get_emission_function()
         # Define the atomic propositions
-        self.atom_prop = ['t', 'a', 'p'] # a for goal, p for capture
+        self.atom_prop = ['t', 'a', 'p']  # a for goal, p for capture
         # Define the labeling function
         self.label_func = self.get_label_function()
 
@@ -57,7 +58,8 @@ class pomdp:
                 trans[st][act] = {}
                 for st_prime in self.next_supp[st][act]:
                     if st[2] == 0:
-                        trans[st][act][st_prime] = graph.transition_n[st[0]][st_prime[0]] * graph.uav_transition[st[1]][act][st_prime[1]]
+                        trans[st][act][st_prime] = graph.transition_n[st[0]][st_prime[0]] * \
+                                                   graph.uav_transition[st[1]][act][st_prime[1]]
                     elif st[2] == 1:
                         trans[st][act][st_prime] = graph.transition_a[st[0]][st_prime[0]] * \
                                                    graph.uav_transition[st[1]][act][st_prime[1]]
@@ -80,7 +82,7 @@ class pomdp:
         for st in self.states:
             obs_dict[st] = {}
             for act in self.actions:
-                if st[0] == st[1]:
+                if graph.neighbor[st[0]][st[1]]:
                     obs_dict[st][act] = [st[0], 'n']
                 else:
                     obs_dict[st][act] = ['n']
@@ -93,7 +95,7 @@ class pomdp:
             for act in self.actions:
                 emiss[st][act] = {}
                 for obs in self.obs_dict[st][act]:
-                    if st[0] == st[1]:
+                    if graph.neighbor[st[0]][st[1]]:
                         if st[0] == obs:
                             emiss[st][act][obs] = 1 - self.obs_noise
                         else:
@@ -108,9 +110,8 @@ class pomdp:
             lab[st] = []
             if st[2] == 1:
                 lab[st] += self.atom_prop[0]
-            if st[1] == graph.uav_goal:
+            if st[1] in graph.uav_goal:
                 lab[st] += self.atom_prop[1]
             if st[0] == st[1]:
                 lab[st] += self.atom_prop[2]
         return lab
-

@@ -2,7 +2,7 @@ from random import choices
 import numpy as np
 
 
-class graph:
+class self:
 
     def __init__(self):
         # Define states
@@ -39,7 +39,9 @@ class graph:
         self.uav_initial_state = '5'
         self.uav_transition = self.get_transition()
         self.uav_next_supp = self.get_next_supp()
-        self.uav_goal = '0'
+        self.uav_goal = ['2']
+        # neighbor function
+        self.neighbor = self.get_neighbor_function()
         # self.sensors = [['1'], ['2', 'f_0'], ['f_1']]
         # Secrets
         # self.secrets = ['f_0', 'f_1']
@@ -50,8 +52,8 @@ class graph:
         trans = {'0': {'a': {'1': 0.9, '2': 0.1}, 'b': {'1': 0.1, '2': 0.9}},
                  '1': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
                  '2': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
-                 '3': {'a': {'5': 1}, 'b': {'5': 1}},
-                 '4': {'a': {'5': 1}, 'b': {'5': 1}},
+                 '3': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.9, '2': 0.1, '5': 0}},
+                 '4': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.1, '2': 0.9, '5': 0}},
                  '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}}}
         return trans
 
@@ -62,6 +64,19 @@ class graph:
             for act in self.gr_actions:
                 next_supp[st] = next_supp[st].union(set(self.gr_transition[st][act].keys()))
         return next_supp
+
+    def get_neighbor_function(self):
+        neigh = {}
+        for gr_st in self.gr_states:
+            neigh[gr_st] = {}
+            for uav_st in self.uav_states:
+                # if uav_st in self.gr_next_supp[gr_st]:
+                #     neigh[gr_st][uav_st] = True
+                if gr_st == uav_st:
+                    neigh[gr_st][uav_st] = True
+                else:
+                    neigh[gr_st][uav_st] = False
+        return neigh
 
     def get_rewards(self, goals):
         rewards = {}
@@ -139,6 +154,7 @@ class graph:
                 trans[st][st_prime] = 0
                 for act in self.gr_actions:
                     if type == 'n':
+                        # print(st, act, st_prime)
                         trans[st][st_prime] += self.gr_transition[st][act][st_prime] * self.opt_policy_n[st][act]
                     elif type == 'a':
                         trans[st][st_prime] += self.gr_transition[st][act][st_prime] * self.opt_policy_a[st][act]
