@@ -14,15 +14,15 @@ class self:
         self.gr_initial_state = '0'
         # self.initial_state_idx = self.states.index(self.initial_state)
         # Define actions
-        self.gr_actions = ['a', 'b']
-        self.uav_actions = ['a', 'b']
+        self.gr_actions = ['a', 'b', 'c']
+        self.uav_actions = ['a', 'b', 'c']
         # self.action_size = len(self.actions)
         # self.action_indices = list(range(len(self.actions)))
         # transition probability dictionary
         self.gr_transition = self.get_transition()
-        self.gr_next_supp = self.get_next_supp()
+        # self.gr_next_supp = self.get_next_supp()
         # Goals
-        self.goals_n = ['3']  # The goal of nominal agent
+        self.goals_n = ['3', '4']  # The goal of nominal agent
         self.goals_a = ['4']  # The goal of adversary
         self.goal_reward = 1
         # reward dictionary
@@ -38,7 +38,7 @@ class self:
         # Define UAV with sensors
         self.uav_initial_state = '5'
         self.uav_transition = self.get_transition()
-        self.uav_next_supp = self.get_next_supp()
+        # self.uav_next_supp = self.get_next_supp()
         self.uav_goal = ['2']
         # neighbor function
         self.neighbor = self.get_neighbor_function()
@@ -47,23 +47,33 @@ class self:
         # self.secrets = ['f_0', 'f_1']
         # self.secret_indices = [self.states.index(secret) for secret in self.secrets]
 
+    # @staticmethod
+    # def get_transition():
+    #     trans = {'0': {'a': {'1': 0.9, '2': 0.1}, 'b': {'1': 0.1, '2': 0.9}},
+    #              '1': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
+    #              '2': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
+    #              '3': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.9, '2': 0.1, '5': 0}},
+    #              '4': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.1, '2': 0.9, '5': 0}},
+    #              '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}}}
+    #     return trans
+
     @staticmethod
     def get_transition():
-        trans = {'0': {'a': {'1': 0.9, '2': 0.1}, 'b': {'1': 0.1, '2': 0.9}},
-                 '1': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
-                 '2': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
-                 '3': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.9, '2': 0.1, '5': 0}},
-                 '4': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.1, '2': 0.9, '5': 0}},
-                 '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}}}
+        trans = {'0': {'a': {'1': 0.5, '2': 0.5}, 'b': {'1': 0.5, '2': 0.5}, 'c': {'0': 1}},
+                 '1': {'a': {'3': 0.5, '4': 0.5}, 'b': {'3': 0.5, '4': 0.5}, 'c': {'1': 1}},
+                 '2': {'a': {'3': 0.5, '4': 0.5}, 'b': {'3': 0.5, '4': 0.5}, 'c': {'2': 1}},
+                 '3': {'a': {'5': 1}, 'b': {'1': 0.9, '2': 0.1}, 'c': {'3': 1}},
+                 '4': {'a': {'5': 1}, 'b': {'1': 0.1, '2': 0.9}, 'c': {'4': 1}},
+                 '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}, 'c': {'5': 1}}}
         return trans
 
-    def get_next_supp(self):
-        next_supp = {}
-        for st in self.gr_states:
-            next_supp[st] = set()
-            for act in self.gr_actions:
-                next_supp[st] = next_supp[st].union(set(self.gr_transition[st][act].keys()))
-        return next_supp
+    # def get_next_supp(self):
+    #     next_supp = {}
+    #     for st in self.gr_states:
+    #         next_supp[st] = set()
+    #         for act in self.gr_actions:
+    #             next_supp[st] = next_supp[st].union(set(self.gr_transition[st][act].keys()))
+    #     return next_supp
 
     def get_neighbor_function(self):
         neigh = {}
@@ -150,14 +160,20 @@ class self:
         trans = {}
         for st in self.gr_states:
             trans[st] = {}
-            for st_prime in self.gr_next_supp[st]:
+            for st_prime in self.gr_states:
                 trans[st][st_prime] = 0
                 for act in self.gr_actions:
                     if type == 'n':
                         # print(st, act, st_prime)
-                        trans[st][st_prime] += self.gr_transition[st][act][st_prime] * self.opt_policy_n[st][act]
+                        if st_prime in self.gr_transition[st][act].keys():
+                            trans[st][st_prime] += self.gr_transition[st][act][st_prime] * self.opt_policy_n[st][act]
+                        else:
+                            trans[st][st_prime] += 0
                     elif type == 'a':
-                        trans[st][st_prime] += self.gr_transition[st][act][st_prime] * self.opt_policy_a[st][act]
+                        if st_prime in self.gr_transition[st][act].keys():
+                            trans[st][st_prime] += self.gr_transition[st][act][st_prime] * self.opt_policy_a[st][act]
+                        else:
+                            trans[st][st_prime] += 0
                     else:
                         raise ValueError('Invalid type parameter.')
         return trans

@@ -14,7 +14,8 @@ class pomdp:
         # self.state_indices = list(range(len(self.states)))
         # self.state_size = len(self.states)
         # Define initial state
-        self.initial_state = (graph.gr_initial_state, graph.uav_initial_state, 0)
+        self.initial_states = [(graph.gr_initial_state, graph.uav_initial_state, 0),
+                               (graph.gr_initial_state, graph.uav_initial_state, 1)]
         # self.initial_state_idx = self.states.index(self.initial_state)
         # Define actions
         self.actions = graph.uav_actions
@@ -30,6 +31,7 @@ class pomdp:
         self.observations = ['0', '1', '2', '3', '4', '5', 'n']
         self.obs_dict = self.get_observation_dictionary()
         self.emiss = self.get_emission_function()
+        self.check_emission_function()
         # Define the atomic propositions
         self.atom_prop = ['t', 'a', 'p']  # a for goal, p for capture
         # Define the labeling function
@@ -94,15 +96,28 @@ class pomdp:
             emiss[st] = {}
             for act in self.actions:
                 emiss[st][act] = {}
-                for obs in self.obs_dict[st][act]:
-                    if graph.neighbor[st[0]][st[1]]:
-                        if st[0] == obs:
-                            emiss[st][act][obs] = 1 - self.obs_noise
+                for obs in self.observations:
+                    if obs in self.obs_dict[st][act]:
+                        if graph.neighbor[st[0]][st[1]]:
+                            if st[0] == obs:
+                                emiss[st][act][obs] = 1 - self.obs_noise
+                            else:
+                                emiss[st][act][obs] = self.obs_noise
                         else:
-                            emiss[st][act][obs] = self.obs_noise
+                            emiss[st][act][obs] = 1
                     else:
-                        emiss[st][act][obs] = 1
+                        emiss[st][act][obs] = 0
         return emiss
+
+    def check_emission_function(self):
+        for st in self.states:
+            for act in self.actions:
+                prob = 0
+                for obs in self.observations:
+                    prob += self.emiss[st][act][obs]
+                if prob != 1:
+                    print("The transition is invalid.")
+        return 0
 
     def get_label_function(self):
         lab = {}

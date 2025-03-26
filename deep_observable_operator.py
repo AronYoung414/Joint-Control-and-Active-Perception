@@ -207,7 +207,7 @@ def sample_data(policy_net, M, T):
         y = []
         a_list = []
         # start from initial state
-        state = prod_pomdp.initial_state
+        state = prod_pomdp.initial_states
         s = prod_pomdp.states.index(state)
         # Sample sensing action
         me = fsc.memory_space.index('l')

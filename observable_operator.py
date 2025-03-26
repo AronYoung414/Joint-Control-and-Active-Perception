@@ -205,7 +205,7 @@ def entropy_a_grad(theta, y_data, a_data):
         temp_H_0 = p_zT0 * np.log2(p_zT0) if p_zT0 > 0 else 0
         temp_H = temp_H_1 + temp_H_0
         H += temp_H
-        P += p_zT1 * p_theta_yk
+        P += p_zT1
         # grad_p_theta_s0_yk = nabla_p_theta_s0_g_y(y_k, sa_list_k, s_0, theta)
         nabla_H += temp_H * grad_log_P_theta_yk
         nabla_P += p_zT1 * grad_log_P_theta_yk
@@ -228,7 +228,7 @@ def entropy_a_grad_per_iter(theta, y_k, a_list_k):
     temp_H_1 = p_zT1 * np.log2(p_zT1) if p_zT1 > 0 else 0
     temp_H_0 = p_zT0 * np.log2(p_zT0) if p_zT0 > 0 else 0
     H = temp_H_1 + temp_H_0
-    P = p_zT1 * p_theta_yk
+    P = p_zT1
     nabla_H += H * grad_log_P_theta_yk
     nabla_P += p_zT1 * grad_log_P_theta_yk
     return H, nabla_H, P, nabla_P
@@ -267,7 +267,8 @@ def sample_data(theta, M, T):
         y = []
         a_list = []
         # start from initial state
-        state = prod_pomdp.initial_state
+        state = prod_pomdp.initial_states
+        state = choices(prod_pomdp.initial_states, prod_pomdp.initial_dist_sampling, k=1)[0]
         # Sample sensing action
         me = fsc.memory_space.index('l')
         act = action_sampler(theta, me)
@@ -308,9 +309,9 @@ def display_states_from_s_data(s_data):
 
 def main():
     # Define hyperparameters
-    ex_num = 1
-    iter_num = 100  # iteration number of gradient ascent
-    M = 100  # number of sampled trajectories
+    ex_num = 4
+    iter_num = 1000  # iteration number of gradient ascent
+    M = 1000  # number of sampled trajectories
     T = 10  # length of a trajectory
     eta = 0.5  # step size for theta
     alpha = 1
@@ -338,7 +339,7 @@ def main():
         ##############################################
         s_data, y_data, a_data = sample_data(theta, M, T)
         # Gradient ascent process
-        # print(y_data)
+        print(y_data)
         # display_states_from_s_data(s_data)
         # SGD gradient
         approx_entropy, grad_H, approx_P_Z1, grad_P = entropy_a_grad_multi(theta, y_data, a_data)

@@ -19,8 +19,9 @@ class prod_pomdp:
         # Goals
         self.goals = [(pomdp_st, dfa_st) for pomdp_st, dfa_st in product(pomdp.states, dfa.goals)]
         # Define initial state
-        self.initial_state = (pomdp.initial_state, dfa.initial_state)
+        self.initial_states = [(initial_state, dfa.initial_state) for initial_state in pomdp.initial_states]
         self.initial_dist = self.get_initial_distribution()
+        self.initial_dist_sampling = [1 / len(self.initial_states) for initial_state in pomdp.initial_states]
         # Define actions
         self.actions = pomdp.actions
         self.action_size = len(self.actions)
@@ -35,6 +36,7 @@ class prod_pomdp:
         self.observations = pomdp.observations
         self.obs_dict = self.get_observation_dictionary()
         self.emiss = self.get_emission_function()
+        self.check_emission_function()
 
     def get_next_supp_with_action(self):
         next_supp = {}
@@ -93,17 +95,31 @@ class prod_pomdp:
             emiss[st] = {}
             for act in self.actions:
                 emiss[st][act] = {}
-                for obs in self.obs_dict[st][act]:
-                    if st == 'sink':
-                        emiss[st][act][obs] = 1
+                for obs in self.observations:
+                    if obs in self.obs_dict[st][act]:
+                        if st == 'sink':
+                            emiss[st][act][obs] = 1
+                        else:
+                            emiss[st][act][obs] = pomdp.emiss[st[0]][act][obs]
                     else:
-                        emiss[st][act][obs] = pomdp.emiss[st[0]][act][obs]
+                        emiss[st][act][obs] = 0
         return emiss
+
+    def check_emission_function(self):
+        for st in self.states:
+            for act in self.actions:
+                prob = 0
+                for obs in self.observations:
+                    prob += self.emiss[st][act][obs]
+                if prob != 1:
+                    print("The transition is invalid.")
+        return 0
 
     def get_initial_distribution(self):
         mu_0 = np.zeros([self.state_size, 1])
-        s_0 = self.states.index(self.initial_state)
-        mu_0[s_0, 0] = 1
+        for initial_st in self.initial_states:
+            s_0 = self.states.index(initial_st)
+            mu_0[s_0, 0] = 1 / len(self.initial_states)
         return mu_0
 
     def next_state_sampler(self, st, act):
