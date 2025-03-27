@@ -47,17 +47,17 @@ class DFA:
                     else:
                         trans[st][i] = st
                 elif st == 1:
-                    if 'a' not in input:
-                        trans[st][i] = st
-                    else:
+                    if 'a' in input:
                         trans[st][i] = 0
+                    else:
+                        trans[st][i] = st
                 elif st == 2:
-                    if 'p' not in input:
-                        trans[st][i] = st
-                    else:
+                    if 'p' in input:
                         trans[st][i] = 0
+                    else:
+                        trans[st][i] = st
                 elif st == 0:
-                    trans[st][i] = 0
+                    trans[st][i] = st
                 else:
                     raise ValueError('Invalid automata state.')
         return trans
