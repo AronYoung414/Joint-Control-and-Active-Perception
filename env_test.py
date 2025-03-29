@@ -14,7 +14,7 @@ fsc = FSC()
 
 prod_pomdp.check_the_transition()
 
-theta = np.random.random([fsc.memory_size, prod_pomdp.action_size])
+theta = np.random.random([fsc.memory_size, prod_pomdp.action_size - 1])
 # with open(f'data/Values/thetaList_2', "rb") as pkl_rb_obj:
 #     theta_list = pickle.load(pkl_rb_obj)
 # theta = theta_list[-1]

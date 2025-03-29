@@ -7,9 +7,10 @@ class DFA:
 
     def __init__(self):
         # Define states
-        self.states = [0, 1, 2, 3]
+        self.states = [0, 1, 2, 3, 4]
         # Goals
-        self.goals = [0]
+        # self.goals1 = [0]
+        # self.goals2 = [4]
         # Define initial state
         self.initial_state = 3
         # Define actions
@@ -36,14 +37,14 @@ class DFA:
             for i in self.input_indices:
                 input = self.input_symbols[i]
                 if st == 3:
-                    # if len(input) == 0:
-                    #     trans[st][i] = st
                     if 'a' not in input and 't' not in input:
                         trans[st][i] = 1
                     elif 'p' not in input and 't' in input:
                         trans[st][i] = 2
-                    elif ('a' in input and 't' not in input) or ('p' in input and 't' in input):
+                    elif 'a' in input and 't' not in input:
                         trans[st][i] = 0
+                    elif 'p' in input and 't' in input:
+                        trans[st][i] = 4
                     else:
                         trans[st][i] = st
                 elif st == 1:
@@ -53,10 +54,12 @@ class DFA:
                         trans[st][i] = st
                 elif st == 2:
                     if 'p' in input:
-                        trans[st][i] = 0
+                        trans[st][i] = 4
                     else:
                         trans[st][i] = st
                 elif st == 0:
+                    trans[st][i] = st
+                elif st == 4:
                     trans[st][i] = st
                 else:
                     raise ValueError('Invalid automata state.')

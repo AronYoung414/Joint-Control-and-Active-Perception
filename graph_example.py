@@ -22,7 +22,7 @@ class self:
         self.gr_transition = self.get_transition()
         # self.gr_next_supp = self.get_next_supp()
         # Goals
-        self.goals_n = ['3', '4']  # The goal of nominal agent
+        self.goals_n = ['5']  # The goal of nominal agent
         self.goals_a = ['4']  # The goal of adversary
         self.goal_reward = 1
         # reward dictionary

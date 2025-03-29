@@ -9,10 +9,11 @@ from random import choices, choice
 from concurrent.futures import ProcessPoolExecutor
 from itertools import repeat
 
+from pomdp import pomdp
 from product_pomdp import prod_pomdp
 from finite_state_controller import FSC
-from policy_network import *
 
+pomdp = pomdp()
 prod_pomdp = prod_pomdp()
 fsc = FSC()
 
@@ -32,11 +33,11 @@ def log_policy_gradient(theta, m, a):
     # A memory space for K-step memory policy
     memory_space = fsc.memory_space
     memory_size = fsc.memory_size
-    gradient = np.zeros([memory_size, prod_pomdp.action_size])
+    gradient = np.zeros([memory_size, prod_pomdp.action_size - 1])
     memory = memory_space[m]
     senAct = prod_pomdp.actions[a]
     for m_prime in range(memory_size):
-        for a_prime in range(prod_pomdp.action_size):
+        for a_prime in range(prod_pomdp.action_size - 1):
             memory_p = memory_space[m_prime]
             senAct_p = prod_pomdp.actions[a_prime]
             indicator_m = 0
@@ -179,30 +180,37 @@ def p_zT_g_y(y, a_list, observable_operator):
     p_obs_g_acts = p_obs_g_actions(y, a_list, observable_operator)
     act_T = prod_pomdp.actions[a_list[-1]]
     o_T = y[-1]
-    st_T = 'sink'
-    v_T = prod_pomdp.states.index(st_T)
-    emiss_prob = prod_pomdp.emiss[st_T][act_T][o_T]
-    p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y[0:-1], a_list[0:-1], observable_operator)
-    p_zT1 = emiss_prob * p_vtp1_obs_g_acts / p_obs_g_acts
+    p_zT1 = 0
+    for st_T in prod_pomdp.secret_states:
+        v_T = prod_pomdp.states.index(st_T)
+        emiss_prob = prod_pomdp.emiss[st_T][act_T][o_T]
+        p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y[0:-1], a_list[0:-1], observable_operator)
+        p_zT1 += emiss_prob * p_vtp1_obs_g_acts / p_obs_g_acts
     p_zT0 = 1 - p_zT1
-    return p_zT1, p_zT0
+    p_wT1 = 0
+    for st_T in prod_pomdp.goal_states:
+        v_T = prod_pomdp.states.index(st_T)
+        emiss_prob = prod_pomdp.emiss[st_T][act_T][o_T]
+        p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y[0:-1], a_list[0:-1], observable_operator)
+        p_wT1 += emiss_prob * p_vtp1_obs_g_acts / p_obs_g_acts
+    return p_zT1, p_zT0, p_wT1
 
 
 def entropy_a_grad(theta, y_data, a_data, observable_operator):
     M = len(y_data)
     H = 0
     P = 0
-    nabla_H = np.zeros([fsc.memory_size, prod_pomdp.action_size])
-    nabla_P = np.zeros([fsc.memory_size, prod_pomdp.action_size])
+    nabla_H = np.zeros([fsc.memory_size, prod_pomdp.action_size - 1])
+    nabla_P = np.zeros([fsc.memory_size, prod_pomdp.action_size - 1])
     for k in range(M):
         # start = time.time()
         y_k = y_data[k]
         a_list_k = a_data[k]
         # Get the values when z_T = 1
-        p_theta_yk = p_theta_obs(theta, y_k, a_list_k, observable_operator)
+        # p_theta_yk = p_theta_obs(theta, y_k, a_list_k, observable_operator)
         grad_log_P_theta_yk = nabla_log_p_theta_obs(theta, y_k, a_list_k)
         # print("gradient done")
-        p_zT1, p_zT0 = p_zT_g_y(y_k, a_list_k, observable_operator)
+        p_zT1, p_zT0, p_wT1 = p_zT_g_y(y_k, a_list_k, observable_operator)
         # print(p_zT1, p_zT0)
 
         # log2_p_theta_s0_yk = np.log2(p_theta_s0_yk) if p_theta_s0_yk > 0 else 0
@@ -210,10 +218,10 @@ def entropy_a_grad(theta, y_data, a_data, observable_operator):
         temp_H_0 = p_zT0 * np.log2(p_zT0) if p_zT0 > 0 else 0
         temp_H = temp_H_1 + temp_H_0
         H += temp_H
-        P += p_zT1
+        P += p_wT1
         # grad_p_theta_s0_yk = nabla_p_theta_s0_g_y(y_k, sa_list_k, s_0, theta)
         nabla_H += temp_H * grad_log_P_theta_yk
-        nabla_P += p_zT1 * grad_log_P_theta_yk
+        nabla_P += p_wT1 * grad_log_P_theta_yk
         # print("One iteration done")
         # end = time.time()
         # print(f"One trajectory done. It takes", end - start, "s")
@@ -225,10 +233,10 @@ def entropy_a_grad(theta, y_data, a_data, observable_operator):
 
 
 def entropy_a_grad_per_iter(theta, y_k, a_list_k, observable_operator):
-    nabla_H = np.zeros([fsc.memory_size, prod_pomdp.action_size])
-    nabla_P = np.zeros([fsc.memory_size, prod_pomdp.action_size])
+    nabla_H = np.zeros([fsc.memory_size, prod_pomdp.action_size - 1])
+    nabla_P = np.zeros([fsc.memory_size, prod_pomdp.action_size - 1])
     grad_log_P_theta_yk = nabla_log_p_theta_obs(theta, y_k, a_list_k)
-    p_zT1, p_zT0 = p_zT_g_y(y_k, a_list_k, observable_operator)
+    p_zT1, p_zT0, p_wT1 = p_zT_g_y(y_k, a_list_k, observable_operator)
     temp_H_1 = p_zT1 * np.log2(p_zT1) if p_zT1 > 0 else 0
     temp_H_0 = p_zT0 * np.log2(p_zT0) if p_zT0 > 0 else 0
     H = temp_H_1 + temp_H_0
@@ -242,8 +250,8 @@ def entropy_a_grad_multi(theta, y_data, a_data, observable_operator):
     M = len(y_data)
     H = 0
     P = 0
-    nabla_H = np.zeros([fsc.memory_size, prod_pomdp.action_size])
-    nabla_P = np.zeros([fsc.memory_size, prod_pomdp.action_size])
+    nabla_H = np.zeros([fsc.memory_size, prod_pomdp.action_size - 1])
+    nabla_P = np.zeros([fsc.memory_size, prod_pomdp.action_size - 1])
     with ProcessPoolExecutor(max_workers=24) as exe:
         H_a_gradH_list = exe.map(entropy_a_grad_per_iter, repeat(theta), y_data, a_data, repeat(observable_operator))
     for H_tuple in H_a_gradH_list:
@@ -259,8 +267,8 @@ def entropy_a_grad_multi(theta, y_data, a_data, observable_operator):
 
 
 def action_sampler(theta, m):
-    prob_list = [pi_theta(theta, m, a) for a in range(prod_pomdp.action_size)]
-    return choices(prod_pomdp.actions, prob_list, k=1)[0]
+    prob_list = [pi_theta(theta, m, a) for a in range(prod_pomdp.action_size - 1)]
+    return choices(pomdp.actions, prob_list, k=1)[0]
 
 
 def sample_data(theta, M, T):
@@ -271,7 +279,7 @@ def sample_data(theta, M, T):
         y = []
         a_list = []
         # start from initial state
-        state = prod_pomdp.initial_states
+        # state = prod_pomdp.initial_states[1]
         state = choices(prod_pomdp.initial_states, prod_pomdp.initial_dist_sampling, k=1)[0]
         # Sample sensing action
         me = fsc.memory_space.index('l')
@@ -284,7 +292,7 @@ def sample_data(theta, M, T):
         me = fsc.transition[me][o]
         y.append(obs)
 
-        for t in range(T):
+        for t in range(T - 1):
             s = prod_pomdp.states.index(state)
             s_data[m, t] = s
             # sample the next state
@@ -298,6 +306,14 @@ def sample_data(theta, M, T):
             o = fsc.observations.index(obs)
             me = fsc.transition[me][o]
             y.append(obs)
+        # Add the ending action
+        state = prod_pomdp.next_state_sampler(state, act)
+        act = 'e'
+        a = prod_pomdp.actions.index(act)
+        a_list.append(a)
+        obs = prod_pomdp.observation_function_sampler(state, act)
+        y.append(obs)
+
         y_data.append(y)
         a_data.append(a_list)
     return s_data, y_data, a_data
@@ -313,10 +329,10 @@ def display_states_from_s_data(s_data):
 
 def main():
     # Define hyperparameters
-    ex_num = 4
+    ex_num = 2
     iter_num = 1000  # iteration number of gradient ascent
     M = 1000  # number of sampled trajectories
-    T = 10  # length of a trajectory
+    T = 5  # length of a trajectory
     eta = 0.5  # step size for theta
     alpha = 1
     # state_dim = 1
@@ -326,7 +342,7 @@ def main():
     # test_grads = create_gradient_shaped_tensors(policy_net)
 
     # Initialize the parameters
-    theta = np.random.random([fsc.memory_size, prod_pomdp.action_size])
+    theta = np.random.random([fsc.memory_size, prod_pomdp.action_size - 1])
     # opt_values = value_iterations(1e-3, F)
     # theta = extract_opt_theta(opt_values, F)  # optimal theta initialization.
     # with open('backward_grid_world_1_data/Values/theta_3', 'rb') as f:
@@ -343,13 +359,14 @@ def main():
         ##############################################
         s_data, y_data, a_data = sample_data(theta, M, T)
         # Gradient ascent process
-        print(y_data)
+        # print(y_data)
+        # print(a_data)
         # display_states_from_s_data(s_data)
         # SGD gradient
-        approx_entropy, grad_H, approx_P_Z1, grad_P = entropy_a_grad_multi(theta, y_data, a_data, obs_dict)
+        approx_entropy, grad_H, approx_P_Z1, grad_P = entropy_a_grad(theta, y_data, a_data, obs_dict)
         grad = grad_H - alpha * grad_P
         # grad_H = torch.from_numpy(grad_H).type(dtype=torch.float32)
-        # print("The gradient of entropy is", grad_H)
+        # print("The gradient of entropy is", grad)
         print("The conditional entropy is", approx_entropy)
         entropy_list.append(approx_entropy)
         print("The probability of completing the task is", approx_P_Z1)
@@ -362,13 +379,13 @@ def main():
         print(f"iteration_{i + 1} done. It takes", end - start, "s")
         print("#" * 100)
 
-    with open(f'./data/Values/thetaList_{ex_num}', "wb") as pkl_wb_obj:
+    with open(f'./data_2/Values/thetaList_{ex_num}', "wb") as pkl_wb_obj:
         pickle.dump(theta_list, pkl_wb_obj)
 
-    with open(f'./data/Values/PZList_{ex_num}', "wb") as pkl_wb_obj:
+    with open(f'./data_2/Values/PZList_{ex_num}', "wb") as pkl_wb_obj:
         pickle.dump(probs_list, pkl_wb_obj)
 
-    with open(f'./data/Values/entropy_{ex_num}', "wb") as pkl_wb_obj:
+    with open(f'./data_2/Values/entropy_{ex_num}', "wb") as pkl_wb_obj:
         pickle.dump(entropy_list, pkl_wb_obj)
 
     iteration_list = range(iter_num)
@@ -377,7 +394,7 @@ def main():
     plt.xlabel("The iteration number")
     plt.ylabel("Values")
     plt.legend()
-    plt.savefig(f'./data/Graphs/Ex_{ex_num}.png')
+    plt.savefig(f'./data_2/Graphs/Ex_{ex_num}.png')
     plt.show()
 
 

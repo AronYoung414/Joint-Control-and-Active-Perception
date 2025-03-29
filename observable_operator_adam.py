@@ -11,7 +11,6 @@ from itertools import repeat
 
 from product_pomdp import prod_pomdp
 from finite_state_controller import FSC
-from policy_network import *
 
 prod_pomdp = prod_pomdp()
 fsc = FSC()
