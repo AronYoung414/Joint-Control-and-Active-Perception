@@ -49,6 +49,9 @@ class Environment:
         self.adversarial_goal_Robot = [(2, 0)]
         self.goal_UAV = [(1, 2), (1, 7)]
         
+        # Labeling function
+        self.label_func = self.labeling_func_creater()
+        
         # Transition probability
         self.stochastic_prob = 0.2  # 20% chance move to one of two nearest cells (UAV)
         self.transition_UAV = self.transition_construction(self.states_UAV, self.actions_UAV, self.stochastic_prob)  # UAV
@@ -148,28 +151,6 @@ class Environment:
 
     
     
-    # def value_iteration(self, threshold, goal, penalty_state_set, state_set, action_set, trans, gamma = 0.8):
-    #     values = np.zeros(len(state_set))
-    #     values_pre = np.copy(values)
-    #     Delta = threshold + 0.1
-    #     while Delta > threshold:
-    #         for state in state_set:
-    #             V_n = 0 # initial
-    #             for action in action_set:
-    #                 P_s_a_s_prime = trans[state][action]
-    #                 temp_V = 0
-    #                 for state_prime in P_s_a_s_prime.keys(): # every next state
-    #                     state_prime_index = state_set.index(state_prime)
-    #                     temp_V += P_s_a_s_prime[state_prime]*(self.reward(state, goal, penalty_state_set) + gamma*values[state_prime_index])
-    #                 if temp_V > V_n:
-    #                     V_n = temp_V
-    #             state_index = state_set.index(state)
-    #             values[state_index] = V_n
-    #         Delta = np.max(values - values_pre)  # When the max value in the state vector is lower than threshold, we terminate it
-    #         value_pre = np.copy(values)
-    #     return values
-    
-    
     def policy_extraction(self, opt_value, goal, penalty_state_set, state_set, action_set, trans, gamma=0.8):
         policy = state_set.copy()          # Pi(s) = optimal action, greedy policy
         # print(policy)
@@ -251,42 +232,44 @@ class Environment:
         else:
             return self.obs_noise_UAV
         
-        
-    def labeling_func(self, gr_state, UAV_state):
-        gr_r, gr_c = gr_state
-        uav_r, uav_c = UAV_state
-        labels = set()
-        
-        goal_pos = (9, 0) if tau == 0 else (2. 0)
-        
-        if gr_state == goal_pos:
-            labels.add('at_goal')
-            
-        if abs(gr_r - uav_r) <= 1 and abs(gr_c - uav_c) <=1:
-            labels.add('see_drone')
-            
-        if gr_state in self.trees:
-            labels.add('tree')
-        if gr_state in self.grasses:
-            labels.add('grass')
-        if gr_state in self.ponds:
-            labels.add('pond')
-        if gr_state in self.rocks:
-            labels.add('rock')
-            
-        if gr_state == (1, 7):
-            labels.add('flagA')
-        if gr_state == (1, 1):
-            labels.add('flagB')
-        if gr_state == (0, 9):
-            labels.add('normal_goal')
-        if gr_state == (2, 0):
-            labels.add('adversarial_goal')
-        
-        
-        return labels
-        
-        
+    # G: robot at normal goal; Z: robot at adversarial goal; S: UAV see drone
+    # A: UAV at flag A; B UAV at flag B
+    # T: robot in tree area; R: robot in grass area; P: robot in pond area; 
+    def labeling_func_creater(self):
+        label_func = {}
+        for gr_state in self.states_Robot:
+            label_func[gr_state] = {}
+            for UAV_state in self.states_UAV:
+                label_func[gr_state][UAV_state] = {}
+                for tau in self.Types_Robot:
+                    label_func[gr_state][UAV_state][tau] = set()
+                    if tau == 0 and gr_state in self.normal_goal_Robot:
+                        label_func[gr_state][UAV_state][tau].add('G')
+                    if tau == 1 and gr_state in self.adversarial_goal_Robot:
+                        label_func[gr_state][UAV_state][tau].add('Z')
+                    
+                    gr_r, gr_c = gr_state
+                    uav_r, uav_c = UAV_state
+                    if abs(gr_r - uav_r) <= 1 and abs(gr_c - uav_c) <=1:
+                        label_func[gr_state][UAV_state][tau].add('S')
+                        
+                    if UAV_state == self.goal_UAV[0]:
+                        label_func[gr_state][UAV_state][tau].add('B')
+                    
+                    if UAV_state == self.goal_UAV[1]:
+                        label_func[gr_state][UAV_state][tau].add('A')
+
+                    if gr_state in self.trees:
+                        label_func[gr_state][UAV_state][tau].add('T')
+
+                    if gr_state in self.grasses:
+                        label_func[gr_state][UAV_state][tau].add('R')
+                        
+                    if gr_state in self.ponds:
+                        label_func[gr_state][UAV_state][tau].add('P')
+                        
+
+        return label_func
         
         
             
@@ -322,7 +305,14 @@ if __name__ == "__main__":
     
     
     # Check observation and emission functions
-    UAV_state = (3, 3)
-    Robot_state = (3, 2)
-    observation = (3, 2)
-    print(env.emission_function_UAV(Robot_state, UAV_state, observation))
+    # UAV_state = (3, 3)
+    # Robot_state = (3, 2)
+    # observation = (3, 2)
+    # print(env.emission_function_UAV(Robot_state, UAV_state, observation))
+    
+
+    # Check labeling function
+    Robot_state = (9, 0)
+    UAV_state = (1, 6)
+    tau = 0
+    print(env.label_func[Robot_state][UAV_state][tau])
