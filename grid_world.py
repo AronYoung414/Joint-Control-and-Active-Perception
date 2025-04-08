@@ -250,6 +250,45 @@ class Environment:
             return 1 - self.obs_noise_UAV  # 0.9 對上 0.1 如果沒對上  
         else:
             return self.obs_noise_UAV
+        
+        
+    def labeling_func(self, gr_state, UAV_state):
+        gr_r, gr_c = gr_state
+        uav_r, uav_c = UAV_state
+        labels = set()
+        
+        goal_pos = (9, 0) if tau == 0 else (2. 0)
+        
+        if gr_state == goal_pos:
+            labels.add('at_goal')
+            
+        if abs(gr_r - uav_r) <= 1 and abs(gr_c - uav_c) <=1:
+            labels.add('see_drone')
+            
+        if gr_state in self.trees:
+            labels.add('tree')
+        if gr_state in self.grasses:
+            labels.add('grass')
+        if gr_state in self.ponds:
+            labels.add('pond')
+        if gr_state in self.rocks:
+            labels.add('rock')
+            
+        if gr_state == (1, 7):
+            labels.add('flagA')
+        if gr_state == (1, 1):
+            labels.add('flagB')
+        if gr_state == (0, 9):
+            labels.add('normal_goal')
+        if gr_state == (2, 0):
+            labels.add('adversarial_goal')
+        
+        
+        return labels
+        
+        
+        
+        
             
 if __name__ == "__main__":
     env = Environment()
