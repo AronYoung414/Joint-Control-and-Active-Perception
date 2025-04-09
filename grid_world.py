@@ -71,6 +71,8 @@ class Environment:
         self.robot_adversarial_P_M_C = self.ground_robot_P_M_C(self.transition_robot, self.policy_Robot_adversarial, self.states_Robot, self.actions_Robots)
         
         
+
+        
         
 #============================================================================================
     def transition_construction(self, state_set, action_set, stochastic_prob):
