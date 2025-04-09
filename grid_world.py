@@ -72,7 +72,7 @@ class Environment:
         
         
 
-        
+
         
 #============================================================================================
     def transition_construction(self, state_set, action_set, stochastic_prob):
@@ -128,7 +128,7 @@ class Environment:
             [self.reward(state, goal, penalty_state_set) for state in state_set], device=device
         )
 
-        Delta = threshold + 0.1  # Set an initial value greater than the threshold
+        Delta = threshold + 0.1  # Set tinan initial value greater than the threshold
         while Delta > threshold:
             values_pre = values.clone()  # Store the previous iteration's values
             new_values = torch.zeros_like(values)  # Initialize new values
@@ -261,14 +261,6 @@ class Environment:
                     if UAV_state == self.goal_UAV[1]:
                         label_func[gr_state][UAV_state][tau].add('A')
 
-                    if gr_state in self.trees:
-                        label_func[gr_state][UAV_state][tau].add('T')
-
-                    if gr_state in self.grasses:
-                        label_func[gr_state][UAV_state][tau].add('R')
-                        
-                    if gr_state in self.ponds:
-                        label_func[gr_state][UAV_state][tau].add('P')
                         
 
         return label_func
