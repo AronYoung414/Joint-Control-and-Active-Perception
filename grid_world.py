@@ -50,13 +50,13 @@ class Environment:
         self.goal_UAV = [(1, 2), (1, 7)]
         
         # Labeling function
-        self.label_func = self.labeling_func_creater()
+        self.label_func = self.labeling_func_constructor()
         
         # Transition probability
         self.stochastic_prob = 0.2  # 20% chance move to one of two nearest cells (UAV)
-        self.transition_UAV = self.transition_construction(self.states_UAV, self.actions_UAV, self.stochastic_prob)  # UAV
+        self.transition_UAV = self.transition_constructor(self.states_UAV, self.actions_UAV, self.stochastic_prob)  # UAV
         self.stochastic_prob = 0.1  # 10% chance move to one of two nearest cells (ground robot)
-        self.transition_robot = self.transition_construction(self.states_Robot, self.actions_Robots, self.stochastic_prob)  # Robot
+        self.transition_robot = self.transition_constructor(self.states_Robot, self.actions_Robots, self.stochastic_prob)  # Robot
         
         # Policy
         self.value_Robot_normal = self.value_iteration(0.01, self.normal_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma = 0.8)
@@ -70,39 +70,92 @@ class Environment:
         self.robot_normal_P_M_C = self.ground_robot_P_M_C(self.transition_robot, self.policy_Robot_normal, self.states_Robot, self.actions_Robots)
         self.robot_adversarial_P_M_C = self.ground_robot_P_M_C(self.transition_robot, self.policy_Robot_adversarial, self.states_Robot, self.actions_Robots)
         
-        
+        # UAV   — use default reward (‑0.2 everywhere)
+        self.transition_UAV = self.transition_constructor(
+                self.states_UAV, self.actions_UAV, 0.2)
+
+        # Ground robot — give goals & ponds so reward is correct
+        all_goals = self.normal_goal_Robot + self.adversarial_goal_Robot
+        self.transition_robot = self.transition_constructor(
+                self.states_Robot, self.actions_Robots, 0.1,
+                goal_set=all_goals, penalty_set=self.ponds)
 
 
         
 #============================================================================================
-    def transition_construction(self, state_set, action_set, stochastic_prob):
-        # trans[state][action][state]: first is current state, third is next state 
-        sto_P = stochastic_prob
+    # def transition_constructor(self, state_set, action_set, stochastic_prob):
+    #     # trans[state][action][state]: first is current state, third is next state 
+    #     sto_P = stochastic_prob
+    #     trans = {}
+    #     for state in state_set:
+    #         trans[state] = {}
+    #         for action in action_set:
+    #             if action == (0, 0):     # Stationary 100% prob
+    #                 trans[state][action] = {}
+    #                 trans[state][action][state] = 1
+    #             else:                   # Non-stationary consider 1. Valid state (if invalid, stay), 2 Edge bouncing, 3. stochastic dynamic 
+    #                 trans[state][action] = {}
+    #                 trans[state][action][state] = 0
+    #                 temp_state = tuple(a + b for a, b in zip(state, action))
+    #                 if temp_state in state_set:
+    #                     trans[state][action][temp_state] = 1 - sto_P    # intended direction   80%   10% for one adj cell and 10% for another
+    #                 else:
+    #                     trans[state][action][state] += 1 - sto_P
+    #                 if action[0] == 0:
+    #                     no_int_action_set = [(1, 0), (-1, 0)]
+    #                 else:
+    #                     no_int_action_set = [(0, 1), (0, -1)]
+    #                 for no_int_action in no_int_action_set:
+    #                     temp_state_no_int = tuple(a + b for a, b in zip(state, no_int_action))
+    #                     if temp_state_no_int in state_set:
+    #                         trans[state][action][temp_state_no_int] = sto_P/2
+    #                     else:
+    #                         trans[state][action][state] += sto_P/2
+    #     return trans
+
+    def transition_constructor(self,
+                           state_set,
+                           action_set,
+                           sto_P,
+                           goal_set=None,
+                           penalty_set=None):
+        """
+        trans[s][a][s′] = (probability , reward)
+        """
+        goal_set    = goal_set    or []          # fall‑back to empty
+        penalty_set = penalty_set or []
+
         trans = {}
-        for state in state_set:
-            trans[state] = {}
-            for action in action_set:
-                if action == (0, 0):     # Stationary 100% prob
-                    trans[state][action] = {}
-                    trans[state][action][state] = 1
-                else:                   # Non-stationary consider 1. Valid state (if invalid, stay), 2 Edge bouncing, 3. stochastic dynamic 
-                    trans[state][action] = {}
-                    trans[state][action][state] = 0
-                    temp_state = tuple(a + b for a, b in zip(state, action))
-                    if temp_state in state_set:
-                        trans[state][action][temp_state] = 1 - sto_P    # intended direction   80%   10% for one adj cell and 10% for another
+        for s in state_set:
+            trans[s] = {}
+            for a in action_set:
+
+                # ---------- build a dict {s′: p} exactly as before ----------
+                next_p = {}
+
+                if a == (0, 0):                  # stay
+                    next_p[s] = 1.0
+                else:
+                    intended = tuple(np.add(s, a))
+                    if intended in state_set:
+                        next_p[intended] = 1 - sto_P
                     else:
-                        trans[state][action][state] += 1 - sto_P
-                    if action[0] == 0:
-                        no_int_action_set = [(1, 0), (-1, 0)]
-                    else:
-                        no_int_action_set = [(0, 1), (0, -1)]
-                    for no_int_action in no_int_action_set:
-                        temp_state_no_int = tuple(a + b for a, b in zip(state, no_int_action))
-                        if temp_state_no_int in state_set:
-                            trans[state][action][temp_state_no_int] = sto_P/2
+                        next_p[s] = next_p.get(s, 0) + (1 - sto_P)
+
+                    side = [(1, 0), (-1, 0)] if a[0] == 0 else [(0, 1), (0, -1)]
+                    for sm in side:
+                        sp = tuple(np.add(s, sm))
+                        if sp in state_set:
+                            next_p[sp] = sto_P / 2
                         else:
-                            trans[state][action][state] += sto_P/2
+                            next_p[s] = next_p.get(s, 0) + (sto_P / 2)
+
+                # ---------- attach reward and commit to trans ---------------
+                trans[s][a] = {
+                    sp: (p, self.reward(sp, goal_set, penalty_set))
+                    for sp, p in next_p.items()
+                }
+
         return trans
 #============================================================================================        
         
@@ -129,67 +182,128 @@ class Environment:
         )
 
         Delta = threshold + 0.1  # Set tinan initial value greater than the threshold
-        while Delta > threshold:
-            values_pre = values.clone()  # Store the previous iteration's values
-            new_values = torch.zeros_like(values)  # Initialize new values
+        # while Delta > threshold:
+        #     values_pre = values.clone()  # Store the previous iteration's values
+        #     new_values = torch.zeros_like(values)  # Initialize new values
 
-            # Iterate through all states and compute value function updates
-            for state in state_set:
-                V_n = float('-inf')  # Initialize as negative infinity
-                for action in action_set:
-                    P_s_a_s_prime = trans[state][action]  # Get transition probabilities P(s' | s, a)
-                    temp_V = 0
-                    for state_prime in P_s_a_s_prime.keys():  # Iterate over all possible next states s'
-                        state_prime_index = state_set.index(state_prime)
-                        temp_V += P_s_a_s_prime[state_prime] * (reward_tensor[state_set.index(state)] + gamma * values_pre[state_prime_index])
-                    if temp_V > V_n:
-                        V_n = temp_V
-                new_values[state_set.index(state)] = V_n  # Update the value for this state
+        #     # Iterate through all states and compute value function updates
+        #     for state in state_set:
+        #         V_n = float('-inf')  # Initialize as negative infinity
+        #         for action in action_set:
+        #             P_s_a_s_prime = trans[state][action]  # Get transition probabilities P(s' | s, a)
+        #             temp_V = 0
+        #             for state_prime in P_s_a_s_prime.keys():  # Iterate over all possible next states s'
+        #                 state_prime_index = state_set.index(state_prime)
+        #                 temp_V += P_s_a_s_prime[state_prime] * (reward_tensor[state_set.index(state)] + gamma * values_pre[state_prime_index])
+        #             if temp_V > V_n:
+        #                 V_n = temp_V
+        #         new_values[state_set.index(state)] = V_n  # Update the value for this state
+
+        #     values = new_values
+        #     Delta = torch.max(torch.abs(values - values_pre))  # Compute convergence condition
+
+        # return values.cpu().numpy()  # Convert back to NumPy for further processing
+        while Delta > threshold:
+            values_pre = values.clone()
+            new_values = torch.zeros_like(values)
+
+            for s in state_set:
+                best = -float('inf')
+                for a in action_set:
+                    total = 0.0
+                    for sp, (p, r) in trans[s][a].items():
+                        idx_sp = state_set.index(sp)
+                        total += p * (r + gamma * values_pre[idx_sp])
+                    best = max(best, total)
+                new_values[state_set.index(s)] = best
 
             values = new_values
-            Delta = torch.max(torch.abs(values - values_pre))  # Compute convergence condition
-
-        return values.cpu().numpy()  # Convert back to NumPy for further processing
-
+            Delta  = torch.max(torch.abs(values - values_pre))
+        return values.cpu().numpy()
+    
     
     
     def policy_extraction(self, opt_value, goal, penalty_state_set, state_set, action_set, trans, gamma=0.8):
-        policy = state_set.copy()          # Pi(s) = optimal action, greedy policy
-        # print(policy)
-        for state in state_set:
-            summation_value = np.zeros(len(action_set))
-            i = 0
-            for action in action_set:
-                state_Prime_dist = trans[state][action]
-                for state_Prime in state_Prime_dist.keys():
-                    state_prime_prob = state_Prime_dist[state_Prime]
-                    summation_value[i] += state_prime_prob*(self.reward(state, goal, penalty_state_set) + gamma*opt_value[state_set.index(state_Prime)])
-                i = i + 1
-            policy[state_set.index(state)] = action_set[np.argmax(summation_value)]
+        # policy = state_set.copy()          # Pi(s) = optimal action, greedy policy
+        # # print(policy)
+        # for state in state_set:
+        #     summation_value = np.zeros(len(action_set))
+        #     i = 0
+        #     for action in action_set:
+        #         state_Prime_dist = trans[state][action]
+        #         for state_Prime in state_Prime_dist.keys():
+        #             state_prime_prob = state_Prime_dist[state_Prime]
+        #             summation_value[i] += state_prime_prob*(self.reward(state, goal, penalty_state_set) + gamma*opt_value[state_set.index(state_Prime)])
+        #         i = i + 1
+        #     policy[state_set.index(state)] = action_set[np.argmax(summation_value)]
+        # return policy
+        policy = state_set.copy()
+        for s in state_set:
+            q_vals = []
+            for a in action_set:
+                q = 0.0
+                for sp, (p, r) in trans[s][a].items():
+                    q += p * (r + gamma * opt_value[state_set.index(sp)])
+                q_vals.append(q)
+            policy[state_set.index(s)] = action_set[int(np.argmax(q_vals))]
         return policy
     
     
-    def ground_robot_P_M_C(self, trans, policy, state_set, action_set):    # MDP == Dynamic 
-        P_M_C = {s: {s_prime: 0 for s_prime in state_set} for s in state_set}
-        for state in state_set:  
-            if state not in trans:  
-                # print(f"Warning: state {state} not found in trans.")
-                continue
+    # def ground_robot_P_M_C(self, trans, policy, state_set, action_set):    # MDP == Dynamic 
+    #     P_M_C = {s: {s_prime: 0 for s_prime in state_set} for s in state_set}
+    #     for state in state_set:  
+    #         if state not in trans:  
+    #             # print(f"Warning: state {state} not found in trans.")
+    #             continue
 
-            state_idx = state_set.index(state)
-            action = policy[state_idx]  
+    #         state_idx = state_set.index(state)
+    #         action = policy[state_idx]  
 
-            if action not in trans[state]:  
-                # print(f"Warning: action {action} not found for state {state} in trans.")
-                continue
+    #         if action not in trans[state]:  
+    #             # print(f"Warning: action {action} not found for state {state} in trans.")
+    #             continue
 
-            for s_prime in state_set:  
-                if s_prime in trans[state][action]:  
-                    P_M_C[state][s_prime] = trans[state][action][s_prime]
-                # else:
-                #     print(f"Warning: next_state {s_prime} not found for (state {state}, action {action}).")
+    #         for s_prime in state_set:  
+    #             if s_prime in trans[state][action]:  
+    #                 P_M_C[state][s_prime] = trans[state][action][s_prime]
+    #             # else: 
+    #             #     print(f"Warning: next_state {s_prime} not found for (state {state}, action {action}).")
+    #     return P_M_C
+
+#============================================================================================
+    def ground_robot_P_M_C(self, trans, policy, state_set, action_set):
+        """
+        Build the policy‑induced Markov chain for the ground robot.
+
+        P_M_C[s][s′] = ( p(s′|s,π(s)),   r(s,a,s′),   a=π(s) )
+        ------------------------------------------------------------------
+        probability : float   — transition prob. under the policy
+        reward      : float   — immediate reward for (s,a,s′)
+        action      : tuple   — the action chosen by the policy in state s
+        """
+
+        # default entry: prob=0, reward=0, action=None
+        P_M_C = {
+            s: {s_prime: (0.0, 0.0, None) for s_prime in state_set}
+            for s in state_set
+        }
+
+        for state in state_set:
+            if state not in trans:
+                continue                                    # safety guard
+
+            action = policy[state_set.index(state)]         # π(s)
+
+            if action not in trans[state]:
+                continue                                    # safety guard
+
+            # iterate over the *actual* successors of (s,a)
+            for s_prime, (prob, rew) in trans[state][action].items():
+                P_M_C[state][s_prime] = (prob, rew, action)
+
         return P_M_C
     
+
 #============================================================================================  
 
     def observation_function_stationary(self, state, sAct):
@@ -217,7 +331,7 @@ class Environment:
     def observation_function_UAV(self, gr_state, UAV_state): # 返回絕對位置, 不是相對位置
         x, y = UAV_state
         gx, gy = gr_state
-        
+
         L_infinity_norm = np.max([abs(gx - x), abs(gy - y)])
         print(L_infinity_norm)
 
@@ -234,10 +348,10 @@ class Environment:
         else:
             return self.obs_noise_UAV
         
-    # G: robot at normal goal; Z: robot at adversarial goal; S: UAV see drone
+    # G: robot at normal goal; Z: robot at adversari    al goal; S: UAV see drone
     # A: UAV at flag A; B UAV at flag B
     # T: robot in tree area; R: robot in grass area; P: robot in pond area; 
-    def labeling_func_creater(self):
+    def labeling_func_constructor(self):
         label_func = {}
         for gr_state in self.states_Robot:
             label_func[gr_state] = {}
@@ -306,7 +420,14 @@ if __name__ == "__main__":
     
 
     # Check labeling function
-    Robot_state = (9, 0)
-    UAV_state = (1, 6)
-    tau = 0
-    print(env.label_func[Robot_state][UAV_state][tau])
+    # Robot_state = (9, 0)
+    # UAV_state = (1, 6)
+    # tau = 0
+    # print(env.label_func[Robot_state][UAV_state][tau])
+    env = Environment()
+    s , sp = (2,1), (2,0)
+    print(env.transition_robot[s][env.policy_Robot_normal[env.states_Robot.index(s)]][sp])
+    # → (probability, reward)
+
+    print(env.robot_normal_P_M_C[s][sp])
+    # → (probability, reward, action)
