@@ -10,9 +10,6 @@ class Environment:
         self.states_UAV = [(i , j) for i in range(WIDTH) for j in range(LENGTH)]
         self.states_Robot = [(i , j) for i in range(WIDTH) for j in range(LENGTH)]
         self.Types_Robot = [0, 1] # 0: normal; 1: adversarial
-        self.Join_states = [(robot_x, robot_y, uav_x, uav_y, robot_type)
-                            for (robot_x, robot_y), (uav_x, uav_y), robot_type
-                            in product(self.states_Robot, self.states_UAV, self.Types_Robot)]
         # Define the cells
         self.trees = [(0, 2), (0, 3), (0, 8), (1, 3), (1, 9), (2, 0), (2, 1), 
                       (2, 2), (2, 3), (2, 8), (3, 0), (3, 1), (3, 3), (3, 4), 
@@ -30,15 +27,10 @@ class Environment:
                                         [(7, 3), (7, 4), (7, 5), (8, 3), (8, 4), (8, 5), (9, 3), (9, 4), (9, 5)]]
         # Define observations
         self.observations = ['1', '2', '3', 'n']
-        self.observations_UAV = ['U11', 'U12', 'U13', 'U21', 'U22', 'U23', 'U31', 'U32', 'U33', 'n']
         self.observations_size = len(self.observations)
-        self.observations_UAV_size = len(self.observations_UAV)
         self.obs_noise_stationary = 0.1
         self.obs_noise_UAV = 0.1
         
-        # Define sensing actions
-        self.sensing_actions = ['1', '2', '3']
-        self.sensing_actions_size = len(self.sensing_actions)
         
         # Actions First index: down and up; Second index: right and left 
         self.actions_UAV = [(1, 0), (-1, 0), (0, 0), (0, 1), (0, -1)]           
@@ -50,19 +42,19 @@ class Environment:
         self.goal_UAV = [(1, 2), (1, 7)]
         
         # Labeling function
-        self.label_func = self.labeling_func_creater()
+        self.label_func = self.get_labeling_func()
         
         # Transition probability
         self.stochastic_prob = 0.2  # 20% chance move to one of two nearest cells (UAV)
-        self.transition_UAV = self.transition_construction(self.states_UAV, self.actions_UAV, self.stochastic_prob)  # UAV
+        self.transition_UAV = self.get_transition(self.states_UAV, self.actions_UAV, self.stochastic_prob)  # UAV
         self.stochastic_prob = 0.1  # 10% chance move to one of two nearest cells (ground robot)
-        self.transition_robot = self.transition_construction(self.states_Robot, self.actions_Robots, self.stochastic_prob)  # Robot
+        self.transition_robot = self.get_transition(self.states_Robot, self.actions_Robots, self.stochastic_prob)  # Robot
         
         # Policy
         self.value_Robot_normal = self.value_iteration(0.01, self.normal_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma = 0.8)
-        self.policy_Robot_normal = self.policy_extraction(self.value_Robot_normal, self.normal_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma=0.8)
+        self.policy_Robot_normal = self.get_policy(self.value_Robot_normal, self.normal_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma=0.8)
         self.value_Robot_adversarial = self.value_iteration(0.01, self.adversarial_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma = 0.8)
-        self.policy_Robot_adversarial = self.policy_extraction(self.value_Robot_adversarial, self.adversarial_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma=0.8)
+        self.policy_Robot_adversarial = self.get_policy(self.value_Robot_adversarial, self.adversarial_goal_Robot, self.ponds, self.states_Robot, self.actions_Robots, self.transition_robot, gamma=0.8)
         # self.value_UAV = 
         # self.policy_UAV = []
         
@@ -70,10 +62,14 @@ class Environment:
         self.robot_normal_P_M_C = self.ground_robot_P_M_C(self.transition_robot, self.policy_Robot_normal, self.states_Robot, self.actions_Robots)
         self.robot_adversarial_P_M_C = self.ground_robot_P_M_C(self.transition_robot, self.policy_Robot_adversarial, self.states_Robot, self.actions_Robots)
         
+        # Get emission function
+        self.Stationary_emission = self.get_emission_fun_stationary()
+        self.UAV_emission = self.get_emission_fun_UAV()
+        
         
         
 #============================================================================================
-    def transition_construction(self, state_set, action_set, stochastic_prob):
+    def get_transition(self, state_set, action_set, stochastic_prob):
         # trans[state][action][state]: first is current state, third is next state 
         sto_P = stochastic_prob
         trans = {}
@@ -151,7 +147,7 @@ class Environment:
 
     
     
-    def policy_extraction(self, opt_value, goal, penalty_state_set, state_set, action_set, trans, gamma=0.8):
+    def get_policy(self, opt_value, goal, penalty_state_set, state_set, action_set, trans, gamma=0.8):
         policy = state_set.copy()          # Pi(s) = optimal action, greedy policy
         # print(policy)
         for state in state_set:
@@ -212,12 +208,21 @@ class Environment:
         else:
             return 0
         
+    def get_emission_fun_stationary(self):
+        emission_func = {}
+        for state in self.states_Robot:
+            for sAct in self.observations:
+                for o in self.observations:
+                    prob = self.emission_function_stationary(state, sAct, o)
+                    emission_func[(state, sAct, o)] = prob
+        return emission_func
+        
     def observation_function_UAV(self, gr_state, UAV_state): # 返回絕對位置, 不是相對位置
         x, y = UAV_state
         gx, gy = gr_state
         
         L_infinity_norm = np.max([abs(gx - x), abs(gy - y)])
-        print(L_infinity_norm)
+        # print(L_infinity_norm)
 
         if L_infinity_norm <=1:
             return gr_state       
@@ -232,48 +237,45 @@ class Environment:
         else:
             return self.obs_noise_UAV
         
+    def get_emission_fun_UAV(self):
+        emission_func = {}
+        for gr_state in self.states_Robot:
+            for UAV_state in self.states_UAV:
+                for o in self.states_Robot:
+                    prob = self.emission_function_UAV(gr_state, UAV_state, o)
+                    emission_func[(gr_state, UAV_state, o)] = prob
+        return emission_func
+        
     # G: robot at normal goal; Z: robot at adversarial goal; S: UAV see drone
     # A: UAV at flag A; B UAV at flag B
-    # T: robot in tree area; R: robot in grass area; P: robot in pond area; 
-    def labeling_func_creater(self):
+    def get_labeling_func(self):
         label_func = {}
         for gr_state in self.states_Robot:
-            label_func[gr_state] = {}
             for UAV_state in self.states_UAV:
-                label_func[gr_state][UAV_state] = {}
                 for tau in self.Types_Robot:
-                    label_func[gr_state][UAV_state][tau] = set()
+                    key = (gr_state, UAV_state, tau)
+                    label_func[key] = set()
+
                     if tau == 0 and gr_state in self.normal_goal_Robot:
-                        label_func[gr_state][UAV_state][tau].add('G')
+                        label_func[key].add('G')
                     if tau == 1 and gr_state in self.adversarial_goal_Robot:
-                        label_func[gr_state][UAV_state][tau].add('Z')
-                    
+                        label_func[key].add('Z')
+
                     gr_r, gr_c = gr_state
                     uav_r, uav_c = UAV_state
-                    if abs(gr_r - uav_r) <= 1 and abs(gr_c - uav_c) <=1:
-                        label_func[gr_state][UAV_state][tau].add('S')
-                        
+                    if abs(gr_r - uav_r) <= 1 and abs(gr_c - uav_c) <= 1:
+                        label_func[key].add('S')
+
                     if UAV_state == self.goal_UAV[0]:
-                        label_func[gr_state][UAV_state][tau].add('B')
-                    
+                        label_func[key].add('B')
+
                     if UAV_state == self.goal_UAV[1]:
-                        label_func[gr_state][UAV_state][tau].add('A')
-
-                    if gr_state in self.trees:
-                        label_func[gr_state][UAV_state][tau].add('T')
-
-                    if gr_state in self.grasses:
-                        label_func[gr_state][UAV_state][tau].add('R')
-                        
-                    if gr_state in self.ponds:
-                        label_func[gr_state][UAV_state][tau].add('P')
-                        
+                        label_func[key].add('A')
 
         return label_func
         
         
-            
-if __name__ == "__main__":
+def main():
     env = Environment()
 
     # Check transition should be 1
@@ -286,7 +288,7 @@ if __name__ == "__main__":
     #             print("This transition is incorrect!")
     #             incorrect_num += 1
     # print("# of incorrect trans: ", incorrect_num)
-    
+
     # Check Value iteration and Policies
     # print("Normal Robot")
     # for state, value, policy in zip(env.states_Robot, env.value_Robot_normal, env.policy_Robot_normal):
@@ -295,24 +297,30 @@ if __name__ == "__main__":
     # print("Adversarial Robot")
     # for state, value, policy in zip(env.states_Robot, env.value_Robot_adversarial, env.policy_Robot_adversarial):
     #     print("State: ", state, "Value", value, "Policy", policy)        
-    
-    
+
+
     # Check Policy-induced Markov chain
     # current_state = (2, 1)
     # next_state = (2, 0)
     # print(env.robot_normal_P_M_C[current_state][next_state])
     # print(env.robot_adversarial_P_M_C[current_state][next_state])
-    
-    
+
+
     # Check observation and emission functions
-    # UAV_state = (3, 3)
-    # Robot_state = (3, 2)
-    # observation = (3, 2)
-    # print(env.emission_function_UAV(Robot_state, UAV_state, observation))
-    
+    UAV_state = (3, 3)
+    Robot_state = (3, 2)
+    observation = (3, 2)
+    join_state = (Robot_state, UAV_state, observation)
+    print(env.UAV_emission[join_state])
+
 
     # Check labeling function
-    Robot_state = (9, 0)
-    UAV_state = (1, 6)
-    tau = 0
-    print(env.label_func[Robot_state][UAV_state][tau])
+    # Robot_state = (9, 0)
+    # UAV_state = (1, 6)
+    # tau = 0
+    # join_state = (Robot_state, UAV_state, tau)
+    # print(env.label_func[join_state])
+
+            
+if __name__ == "__main__":
+    main()
