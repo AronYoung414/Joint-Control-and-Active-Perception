@@ -2,30 +2,42 @@ from random import choices
 import numpy as np
 
 
-class graph:
+class Environment:
 
     def __init__(self):
+        # The width and height of the grid world
+        self.width = 6
+        self.height = 6
+        # parameter which controls environment noise
+        self.stoPar = 0.1
+        # parameter which controls observation noise
+        self.obs_noise = 0.1
+        # Define obstacles
+        self.obstacles = [(2, 1), (5, 1), (0, 2), (3, 3)]
         # Define states
-        self.gr_states = ['0', '1', '2', '3', '4', '5']
-        self.uav_states = ['0', '1', '2', '3', '4', '5']
-        # self.state_indices = list(range(len(self.states)))
-        # self.state_size = len(self.states)
+        self.whole_states = [(i, j) for i in range(self.width) for j in range(self.height)]
+        self.gr_states = list(set(self.whole_states) - set(self.obstacles))
+        self.uav_states = self.gr_states
+        self.gr_state_indices = list(range(len(self.gr_states)))
+        # self.state_size = len(self.gr_states)
         # Define initial state
-        self.gr_initial_state = '0'
-        # self.initial_state_idx = self.states.index(self.initial_state)
+        self.gr_initial_state = (0, 3)
+        self.uav_initial_state = (3, 0)
+        # self.initial_state_dis = self.get_initial_distribution()
         # Define actions
-        self.gr_actions = ['a', 'b', 'c']
-        self.uav_actions = ['a', 'b', 'c']
+        self.gr_actions = [(1, 0), (-1, 0), (0, 1), (0, -1), (0, 0)]
+        self.uav_actions = self.gr_actions
         # self.action_size = len(self.actions)
         # self.action_indices = list(range(len(self.actions)))
-        # transition probability dictionary
-        self.gr_transition = self.get_transition()
-        # self.gr_next_supp = self.get_next_supp()
         # Goals
-        self.goals_n = ['3', '4']  # The goal of nominal agent
-        self.goals_a = ['4']  # The goal of adversary
-        self.goal_reward = 1
+        self.goals_n = [(5, 5)]  # The goal of nominal agent
+        self.goals_a = [(5, 0)]  # The goal of adversary agent
+        self.uav_goal = [(0, 5)]
+        # transition probability dictionary
+        self.gr_transition = self.get_transition('g')
+        self.uav_transition = self.get_transition('u')
         # reward dictionary
+        self.goal_reward = 1
         self.rewards_n = self.get_rewards(self.goals_n)  # The rewards of nominal agent
         self.rewards_a = self.get_rewards(self.goals_a)  # The rewards of adversary
         # discounting factor
@@ -35,54 +47,16 @@ class graph:
         # calculate the transition of ground robots under the optimal policy
         self.transition_n = self.get_states_transition('n')
         self.transition_a = self.get_states_transition('a')
-        # Define UAV with sensors
-        self.uav_initial_state = '5'
-        self.uav_transition = self.get_transition()
-        # self.uav_next_supp = self.get_next_supp()
-        self.uav_goal = ['2']
         # neighbor function
         self.neighbor = self.get_neighbor_function()
-        # self.sensors = [['1'], ['2', 'f_0'], ['f_1']]
-        # Secrets
-        # self.secrets = ['f_0', 'f_1']
-        # self.secret_indices = [self.states.index(secret) for secret in self.secrets]
-
-    # @staticmethod
-    # def get_transition():
-    #     trans = {'0': {'a': {'1': 0.9, '2': 0.1}, 'b': {'1': 0.1, '2': 0.9}},
-    #              '1': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
-    #              '2': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}},
-    #              '3': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.9, '2': 0.1, '5': 0}},
-    #              '4': {'a': {'1': 0, '2': 0, '5': 1}, 'b': {'1': 0.1, '2': 0.9, '5': 0}},
-    #              '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}}}
-    #     return trans
-
-    @staticmethod
-    def get_transition():
-        trans = {'0': {'a': {'1': 0.5, '2': 0.5}, 'b': {'1': 0.5, '2': 0.5}, 'c': {'0': 1}},
-                 '1': {'a': {'3': 0.5, '4': 0.5}, 'b': {'3': 0.5, '4': 0.5}, 'c': {'1': 1}},
-                 '2': {'a': {'3': 0.5, '4': 0.5}, 'b': {'3': 0.5, '4': 0.5}, 'c': {'2': 1}},
-                 '3': {'a': {'5': 1}, 'b': {'1': 0.9, '2': 0.1}, 'c': {'3': 1}},
-                 '4': {'a': {'5': 1}, 'b': {'1': 0.1, '2': 0.9}, 'c': {'4': 1}},
-                 '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}, 'c': {'5': 1}}}
-        return trans
-
-    # def get_next_supp(self):
-    #     next_supp = {}
-    #     for st in self.gr_states:
-    #         next_supp[st] = set()
-    #         for act in self.gr_actions:
-    #             next_supp[st] = next_supp[st].union(set(self.gr_transition[st][act].keys()))
-    #     return next_supp
 
     def get_neighbor_function(self):
         neigh = {}
         for gr_st in self.gr_states:
             neigh[gr_st] = {}
             for uav_st in self.uav_states:
-                # if uav_st in self.gr_next_supp[gr_st]:
-                #     neigh[gr_st][uav_st] = True
-                if gr_st == uav_st:
+                dist = np.sqrt((gr_st[0] - uav_st[0])**2 + (gr_st[1] - uav_st[1])**2)
+                if 2 > dist >= 0:
                     neigh[gr_st][uav_st] = True
                 else:
                     neigh[gr_st][uav_st] = False
@@ -99,16 +73,79 @@ class graph:
                     rewards[st][act] = 0
         return rewards
 
+
+    def complementary_actions(self, act):
+        # Use to find out stochastic transitions, if it stays, no stochasticity, if other actions, return possible stochasticity directions.
+        if act == (0, 0):
+            return []
+        elif act[0] == 0:
+            return [(1, 0), (-1, 0)]
+        else:
+            return [(0, 1), (0, -1)]
+
+    def check_inside(self, st, agent):
+        if agent == 'g':
+            states = self.gr_states
+        elif agent == 'u':
+            states = self.uav_states
+        else:
+            raise ValueError('Invalid agent parameter.')
+        # If the state is valid or not
+        if st in states:
+            return True
+        return False
+
+    def get_transition(self, agent):
+        if agent == 'g':
+            states = self.gr_states
+            actions = self.gr_actions
+        elif agent == 'u':
+            states = self.uav_states
+            actions = self.uav_actions
+        else:
+            raise ValueError('Invalid agent parameter.')
+        # Constructing transition function trans[state][action][next_state] = probability
+        stoPar = self.stoPar
+        trans = {}
+        for st in states:
+            trans[st] = {}
+            for act in actions:
+                if act == (0, 0):
+                    trans[st][act] = {}
+                    trans[st][act][st] = 1
+                else:
+                    trans[st][act] = {}
+                    trans[st][act][st] = 0
+                    tempst = tuple(np.array(st) + np.array(act))
+                    if self.check_inside(tempst, agent):
+                        trans[st][act][tempst] = 1 - 2 * stoPar
+                    else:
+                        trans[st][act][st] += 1 - 2 * stoPar
+                    for act_ in self.complementary_actions(act):
+                        tempst_ = tuple(np.array(st) + np.array(act_))
+                        if self.check_inside(tempst_, agent):
+                            trans[st][act][tempst_] = stoPar
+                        else:
+                            trans[st][act][st] += stoPar
+        # self.check_trans(trans)
+        return trans
+
+    def check_trans(self, trans):
+        # Check if the transitions are constructed correctly
+        for st in trans.keys():
+            for act in trans[st].keys():
+                if abs(sum(trans[st][act].values()) - 1) > 0.01:
+                    print("st is:", st, "act is:", act, "sum is:", sum(trans[st][act].values()))
+                    return False
+        print("Transition is correct")
+        return True
+
     def extract_policy(self, rewards, V):
         """
         Extracts the optimal policy given the optimal value function.
 
-        :param states: List of states
-        :param actions: List of actions
-        :param transition_probabilities: Dictionary with keys (state, action, next_state) and values as probabilities
         :param rewards: Dictionary with keys (state, action, next_state) and values as rewards
         :param V: Optimal value function
-        :param gamma: Discount factor
         :return: Optimal deterministic policy as a dictionary {state: best_action}
         """
         policy = {}
@@ -130,11 +167,7 @@ class graph:
         """
         Performs Value Iteration to compute the optimal state values.
 
-        :param states: List of states
-        :param actions: List of actions
-        :param transition_probabilities: Dictionary with keys (state, action, next_state) and values as probabilities
         :param rewards: Dictionary with keys (state, action) and values as rewards
-        :param gamma: Discount factor
         :param theta: Convergence threshold
         :return: Optimal value function and optimal policy
         """

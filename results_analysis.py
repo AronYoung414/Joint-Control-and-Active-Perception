@@ -25,15 +25,15 @@ iter_num = 1000  # iteration number of gradient ascent
 M = 1000  # number of sampled trajectories
 T = 10  # length of a trajectory
 
-with open(f'data_2/Values/thetaList_4', "rb") as pkl_rb_obj:
+with open(f'data_2/Values/thetaList_2', "rb") as pkl_rb_obj:
     theta_list = pickle.load(pkl_rb_obj)
 theta = theta_list[-1]
 
-with open(f'data_2/Values/PZList_4', "rb") as pkl_rb_obj:
+with open(f'data_2/Values/PZList_2', "rb") as pkl_rb_obj:
     PZlist = pickle.load(pkl_rb_obj)
 pz = PZlist[-1]
 
-with open(f'data_2/Values/entropy_4', "rb") as pkl_rb_obj:
+with open(f'data_2/Values/entropy_2', "rb") as pkl_rb_obj:
     entropy_list = pickle.load(pkl_rb_obj)
 entropy = entropy_list[-1]
 

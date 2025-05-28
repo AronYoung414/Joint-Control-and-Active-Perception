@@ -9,11 +9,11 @@ from random import choices, choice
 from concurrent.futures import ProcessPoolExecutor
 from itertools import repeat
 
-from pomdp import pomdp
+from POMDP import POMDP
 from product_pomdp import prod_pomdp
 from finite_state_controller import FSC
 
-pomdp = pomdp()
+pomdp = POMDP()
 prod_pomdp = prod_pomdp()
 fsc = FSC()
 
@@ -75,6 +75,7 @@ def p_obs_g_actions(y, a_list, observable_operator):
     # Give value to the initial state
     mu_0 = prod_pomdp.initial_dist
     # Obtain observable operators
+    # print(y[-1])
     oo = observable_operator[y[-1]][act_list[-1]]
     # Create a vector with all elements equals to 1
     one_vec = np.ones([1, prod_pomdp.state_size])
@@ -268,10 +269,10 @@ def entropy_a_grad_multi(theta, y_data, a_data, observable_operator):
 
 def action_sampler(theta, m):
     prob_list = [pi_theta(theta, m, a) for a in range(prod_pomdp.action_size - 1)]
-    return choices(pomdp.actions, prob_list, k=1)[0]
+    return choices(POMDP.actions, prob_list, k=1)[0]
 
 
-def sample_data(theta, M, T):
+def sample_data(theta, M, T, type='mix'):
     s_data = np.zeros([M, T], dtype=np.int32)
     a_data = []
     y_data = []
@@ -279,8 +280,14 @@ def sample_data(theta, M, T):
         y = []
         a_list = []
         # start from initial state
-        # state = prod_pomdp.initial_states[1]
-        state = choices(prod_pomdp.initial_states, prod_pomdp.initial_dist_sampling, k=1)[0]
+        if type == 'mix':
+            state = choices(prod_pomdp.initial_states, prod_pomdp.initial_dist_sampling, k=1)[0]
+        elif type == '1':
+            state = prod_pomdp.initial_states[1]
+        elif type == '0':
+            state = prod_pomdp.initial_states[0]
+        else:
+            raise ValueError('Invalid type value.')
         # Sample sensing action
         me = fsc.memory_space.index('l')
         act = action_sampler(theta, me)

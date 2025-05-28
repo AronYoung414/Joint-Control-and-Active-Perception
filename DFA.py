@@ -1,11 +1,10 @@
-from pomdp import pomdp
-
-pomdp = pomdp()
+from POMDP import POMDP
 
 
 class DFA:
 
     def __init__(self):
+        self.pomdp = POMDP()
         # Define states
         self.states = [0, 1, 2, 3, 4]
         # Goals
@@ -20,11 +19,10 @@ class DFA:
         # Define transition
         self.transition = self.get_transition()
 
-    @staticmethod
-    def get_input_symbols():
+    def get_input_symbols(self):
         inputs = set()
-        for st in pomdp.states:
-            inputs.add(tuple(pomdp.label_func[st]))
+        for st in self.pomdp.states:
+            inputs.add(tuple(self.pomdp.label_func[st]))
         inputs_list = []
         for input in inputs:
             inputs_list.append(list(input))
