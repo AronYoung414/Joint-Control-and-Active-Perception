@@ -1,16 +1,14 @@
-import itertools
 import numpy as np
 import time
 import matplotlib.pyplot as plt
 import pickle
-from math import isinf
 
-from random import choices, choice
+from random import choices
 from concurrent.futures import ProcessPoolExecutor
 from itertools import repeat
 
 from product_pomdp import prod_pomdp
-from finite_state_controller import FSC
+from policy_gradient_method_archive.finite_state_controller import FSC
 
 prod_pomdp = prod_pomdp()
 fsc = FSC()

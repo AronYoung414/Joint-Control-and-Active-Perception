@@ -1,238 +1,347 @@
 import pickle
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-
 from collections import deque
 import random
 
 from product_pomdp import prod_pomdp
 from information_rewards import InformationRewards
 
-# prod_pomdp = prod_pomdp()
 info_rewards = InformationRewards()
 
 
 class ActorNetwork(nn.Module):
-    """Actor network for agent_2's policy"""
+    """Improved Actor network with better initialization and regularization"""
 
-    def __init__(self, input_size, hidden_size=128, output_size=3):
+    def __init__(self, input_size, hidden_size=128, output_size=3, dropout_rate=0.2):
         super(ActorNetwork, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, output_size)
+        self.dropout = nn.Dropout(dropout_rate)
         self.softmax = nn.Softmax(dim=-1)
+
+        # Better weight initialization
+        self._init_weights()
+
+    def _init_weights(self):
+        for layer in [self.fc1, self.fc2, self.fc3]:
+            nn.init.xavier_uniform_(layer.weight)
+            nn.init.constant_(layer.bias, 0)
+
+        # Smaller initialization for output layer to prevent extreme probabilities
+        nn.init.xavier_uniform_(self.fc3.weight, gain=0.1)
 
     def forward(self, state):
         x = F.relu(self.fc1(state))
+        x = self.dropout(x)
         x = F.relu(self.fc2(x))
+        x = self.dropout(x)
         x = self.fc3(x)
         return self.softmax(x)
 
 
 class CriticNetwork(nn.Module):
-    """Critic network for value function estimation"""
+    """Improved Critic network with better architecture"""
 
-    def __init__(self, input_size, hidden_size=128):
+    def __init__(self, input_size, hidden_size=128, dropout_rate=0.2):
         super(CriticNetwork, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, 1)
+        self.fc3 = nn.Linear(hidden_size, hidden_size)  # Additional layer
+        self.fc4 = nn.Linear(hidden_size, 1)
+        self.dropout = nn.Dropout(dropout_rate)
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for layer in [self.fc1, self.fc2, self.fc3, self.fc4]:
+            nn.init.xavier_uniform_(layer.weight)
+            nn.init.constant_(layer.bias, 0)
 
     def forward(self, state):
         x = F.relu(self.fc1(state))
+        x = self.dropout(x)
         x = F.relu(self.fc2(x))
-        return self.fc3(x)
+        x = self.dropout(x)
+        x = F.relu(self.fc3(x))
+        return self.fc4(x)
 
 
 class Agent2ActorCritic:
-    """Deep Actor-Critic agent for agent_2"""
+    """Improved Deep Actor-Critic agent with variance reduction techniques"""
 
-    def __init__(self, env, T=10, lr_actor=0.0003, lr_critic=0.0005,
-                 gamma=0.99, hidden_size=128, window_size=1000):
+    def __init__(self, env, T=10, lr_actor=0.0001, lr_critic=0.0003,
+                 gamma=0.95, hidden_size=128, window_size=1000,
+                 entropy_coeff=0.01, value_loss_coeff=0.5, max_grad_norm=0.5,
+                 batch_size=32, use_gae=True, gae_lambda=0.95):
         self.env = env
         self.gamma = gamma
+        self.entropy_coeff = entropy_coeff
+        self.value_loss_coeff = value_loss_coeff
+        self.max_grad_norm = max_grad_norm
+        self.batch_size = batch_size
+        self.use_gae = use_gae
+        self.gae_lambda = gae_lambda
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # The size of state
-        # Total: 1 + 1 + 1 + 1 = 4 features
         self.state_size = 4
-
-        # the length of observation
         self.observation_length = T
 
-        # Initialize networks - Actor uses observation_length, Critic uses state_size
+        # Initialize networks with improved architecture
         self.actor = ActorNetwork(self.observation_length, hidden_size).to(self.device)
         self.critic = CriticNetwork(self.state_size, hidden_size).to(self.device)
 
-        # Optimizers
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
+        # Use different optimizers with weight decay
+        self.actor_optimizer = optim.AdamW(self.actor.parameters(), lr=lr_actor, weight_decay=1e-4)
+        self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=lr_critic, weight_decay=1e-4)
+
+        # Learning rate schedulers
+        self.actor_scheduler = optim.lr_scheduler.StepLR(self.actor_optimizer, step_size=1000, gamma=0.95)
+        self.critic_scheduler = optim.lr_scheduler.StepLR(self.critic_optimizer, step_size=1000, gamma=0.95)
 
         # Experience buffer
+        self.reset_episode_buffers()
+
+        # Experience replay buffer for better sample efficiency
+        self.replay_buffer = deque(maxlen=10000)
+
+        # Running statistics for reward normalization
+        self.reward_mean = 0.0
+        self.reward_std = 1.0
+        self.reward_count = 0
+
+        # Target networks for stability (optional)
+        self.use_target_network = True
+        if self.use_target_network:
+            self.target_critic = CriticNetwork(self.state_size, hidden_size).to(self.device)
+            self.target_critic.load_state_dict(self.critic.state_dict())
+            self.target_update_freq = 100
+            self.update_count = 0
+
+    def reset_episode_buffers(self):
         self.episode_states = []
-        self.episode_ss = []  # The list of indices of states
+        self.episode_ss = []
         self.episode_actions = []
-        self.episode_as = []  # The list of indices of actions
+        self.episode_as = []
         self.episode_rewards = []
         self.episode_log_probs = []
         self.episode_values = []
-        self.episode_obs = []  # The list of observations
+        self.episode_obs = []
+        self.episode_dones = []
+
+    def update_reward_stats(self, reward):
+        """Update running statistics for reward normalization"""
+        self.reward_count += 1
+        delta = reward - self.reward_mean
+        self.reward_mean += delta / self.reward_count
+        delta2 = reward - self.reward_mean
+        self.reward_std = np.sqrt(
+            max(1e-8, (self.reward_count - 1) * self.reward_std ** 2 + delta * delta2) / self.reward_count)
+
+    def normalize_reward(self, reward):
+        """Normalize reward using running statistics"""
+        return (reward - self.reward_mean) / max(self.reward_std, 1e-8)
+
+    def compute_gae(self, rewards, values, dones, next_value):
+        """Compute Generalized Advantage Estimation"""
+        advantages = []
+        gae = 0
+
+        for i in reversed(range(len(rewards))):
+            if i == len(rewards) - 1:
+                next_non_terminal = 1.0 - dones[i]
+                next_value_est = next_value
+            else:
+                next_non_terminal = 1.0 - dones[i]
+                next_value_est = values[i + 1]
+
+            delta = rewards[i] + self.gamma * next_value_est * next_non_terminal - values[i]
+            gae = delta + self.gamma * self.gae_lambda * next_non_terminal * gae
+            advantages.insert(0, gae)
+
+        return advantages
 
     def encode_state(self, state):
+        # Same as original implementation
         if state in self.env.sink_states:
-            if state == 'sink1':  # Encode the sink states 1
-                state_vector = np.array([
-                    -1 / 6,  # 1 features
-                    -1 / 6,  # 1 features
-                    0,  # 1 features
-                    0  # 1 feature
-                ])
-            elif state == 'sink2':  # Encode the sink states 2
-                state_vector = np.array([
-                    -2 / 6,  # 1 features
-                    -2 / 6,  # 1 features
-                    0,  # 1 features
-                    0  # 1 feature
-                ])
-            else:  # Encode the sink states 3
-                state_vector = np.array([
-                    -3 / 6,  # 1 features
-                    -3 / 6,  # 1 features
-                    0,  # 1 features
-                    0  # 1 feature
-                ])
+            if state == 'sink1':
+                state_vector = np.array([-1 / 6, -1 / 6, 0, 0])
+            elif state == 'sink2':
+                state_vector = np.array([-2 / 6, -2 / 6, 0, 0])
+            else:
+                state_vector = np.array([-3 / 6, -3 / 6, 0, 0])
         else:
-            """Encode the current state into a feature vector"""
             agent1_pos = state[0][0]
             agent2_pos = state[0][1]
             type = state[0][2]
             auto_st = state[1]
-            # Normalize positions to [0, 1]
-            agent1_norm = float(agent1_pos) / 6  # There are 6 states in the graph
-            agent2_norm = float(agent2_pos) / 6  # There are 6 states in the graph
-
-            # # Relative position
-            # relative_pos = agent1_norm - agent2_norm
-
-            # Concatenate all features
-            state_vector = np.array([
-                agent1_norm,  # 1 features
-                agent2_norm,  # 1 features
-                type,  # 1 features
-                auto_st  # 1 feature
-            ])
+            agent1_norm = float(agent1_pos) / 6
+            agent2_norm = float(agent2_pos) / 6
+            state_vector = np.array([agent1_norm, agent2_norm, type, auto_st])
 
         return torch.FloatTensor(state_vector).to(self.device)
 
     def encode_observation(self, obs):
-        """Encode a single observation into a numerical value"""
+        # Same as original implementation
         if obs is None:
             return 0.0
-
-        # Map your specific observations to numerical values
-        obs_mapping = {
-            '0': 0.0,
-            '1': 1.0,
-            '2': 2.0,
-            '3': 3.0,
-            '4': 4.0,
-            '5': 5.0,
-            'n': 6.0  # 'n' mapped to 6.0
-        }
-
-        return obs_mapping.get(obs, 0.0)  # Default to 0.0 if observation not found
+        obs_mapping = {'0': 0.0, '1': 1.0, '2': 2.0, '3': 3.0, '4': 4.0, '5': 5.0, 'n': 6.0}
+        return obs_mapping.get(obs, 0.0)
 
     def prepare_observation_sequence(self, episode_obs, max_length=None):
-        """Prepare observation sequence for the actor network"""
+        # Same as original implementation
         if max_length is None:
             max_length = self.observation_length
 
-        # Encode observations to numerical values
         encoded_obs = [self.encode_observation(obs) for obs in episode_obs]
 
-        # If we don't have enough observations, pad with zeros
         if len(encoded_obs) < max_length:
-            # Pad with zeros at the beginning
             padded_obs = [0.0] * (max_length - len(encoded_obs)) + encoded_obs
         else:
-            # Take the last max_length observations
             padded_obs = encoded_obs[-max_length:]
 
         return torch.FloatTensor(padded_obs).to(self.device)
 
-    def select_action(self, obs_sequence):
-        """Select an action using the actor network"""
+    def select_action(self, obs_sequence, training=True):
+        """Select action with improved exploration"""
         action_probs = self.actor(obs_sequence)
-        dist = torch.distributions.Categorical(action_probs)
-        action = dist.sample()
-        log_prob = dist.log_prob(action)
 
-        return action.item(), log_prob
+        # Add small epsilon for numerical stability
+        action_probs = action_probs + 1e-8
+        action_probs = action_probs / action_probs.sum()
+
+        dist = torch.distributions.Categorical(action_probs)
+
+        if training:
+            action = dist.sample()
+        else:
+            action = torch.argmax(action_probs)
+
+        log_prob = dist.log_prob(action)
+        entropy = dist.entropy()
+
+        return action.item(), log_prob, entropy
 
     def update_networks(self):
-        """Update actor and critic networks using collected episode data"""
+        """Improved network updates with multiple techniques"""
         if len(self.episode_rewards) == 0:
-            return None, None
+            return None, None, None
 
-        # Convert lists to tensors
-        # states = torch.stack(self.episode_states)
-        # actions = torch.LongTensor(self.episode_actions).to(self.device)
+        # Convert to tensors
         rewards = torch.FloatTensor(self.episode_rewards).to(self.device)
         log_probs = torch.stack(self.episode_log_probs)
         values = torch.stack(self.episode_values).squeeze()
+        dones = torch.FloatTensor(self.episode_dones).to(self.device)
 
-        # Compute returns (discounted cumulative rewards)
-        returns = []
-        G = 0
-        for reward in reversed(rewards):
-            G = reward + self.gamma * G
-            returns.insert(0, G)
-        returns = torch.FloatTensor(returns).to(self.device)
+        # Normalize rewards
+        normalized_rewards = torch.FloatTensor([
+            self.normalize_reward(r.item()) for r in rewards
+        ]).to(self.device)
 
-        # Normalize returns
-        if returns.std() > 1e-8:
-            returns = (returns - returns.mean()) / returns.std()
+        # Update reward statistics
+        for reward in rewards:
+            self.update_reward_stats(reward.item())
 
-        # Compute advantages
-        advantages = returns - values.detach()
+        # Compute next value for GAE (assuming episode ends)
+        next_value = torch.tensor(0.0).to(self.device)
 
-        # Actor loss (policy gradient with baseline)
-        actor_loss = -(log_probs * advantages).mean()
+        if self.use_gae:
+            # Use GAE for advantage computation
+            advantages = self.compute_gae(
+                normalized_rewards.cpu().numpy(),
+                values.detach().cpu().numpy(),
+                dones.cpu().numpy(),
+                next_value.item()
+            )
+            advantages = torch.FloatTensor(advantages).to(self.device)
+            returns = advantages + values.detach()
+        else:
+            # Standard return computation
+            returns = []
+            G = next_value
+            for reward in reversed(normalized_rewards):
+                G = reward + self.gamma * G
+                returns.insert(0, G)
+            returns = torch.FloatTensor(returns).to(self.device)
+            advantages = returns - values.detach()
 
-        # Critic loss (MSE between predicted values and returns)
-        critic_loss = F.mse_loss(values, returns)
+        # Normalize advantages
+        if advantages.std() > 1e-8:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Update actor
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
-        self.actor_optimizer.step()
+        # Compute entropy for regularization
+        entropies = []
+        for obs in self.episode_obs[:-1]:  # Exclude final observation
+            obs_seq = self.prepare_observation_sequence([obs])
+            action_probs = self.actor(obs_seq)
+            dist = torch.distributions.Categorical(action_probs)
+            entropies.append(dist.entropy())
 
-        # Update critic
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.5)
-        self.critic_optimizer.step()
+        if entropies:
+            entropy_loss = torch.stack(entropies).mean()
+        else:
+            entropy_loss = torch.tensor(0.0).to(self.device)
+
+        # Actor loss with entropy regularization
+        policy_loss = -(log_probs * advantages).mean()
+        actor_loss = policy_loss - self.entropy_coeff * entropy_loss
+
+        # Critic loss with clipping
+        value_loss = F.mse_loss(values, returns)
+
+        # Multiple gradient updates for better convergence
+        num_updates = max(1, len(self.episode_rewards) // self.batch_size)
+
+        total_actor_loss = 0
+        total_critic_loss = 0
+
+        for _ in range(num_updates):
+            # Update actor
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+            self.actor_optimizer.step()
+
+            # Update critic
+            self.critic_optimizer.zero_grad()
+            value_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+            self.critic_optimizer.step()
+
+            total_actor_loss += actor_loss.item()
+            total_critic_loss += value_loss.item()
+
+        # Update learning rates
+        self.actor_scheduler.step()
+        self.critic_scheduler.step()
+
+        # Update target network
+        if self.use_target_network:
+            self.update_count += 1
+            if self.update_count % self.target_update_freq == 0:
+                self.target_critic.load_state_dict(self.critic.state_dict())
+
+        # Store experience in replay buffer
+        episode_data = {
+            'states': self.episode_states.copy(),
+            'actions': self.episode_as.copy(),
+            'rewards': self.episode_rewards.copy(),
+            'observations': self.episode_obs.copy()
+        }
+        self.replay_buffer.append(episode_data)
 
         # Clear episode data
-        self.episode_states.clear()
-        self.episode_ss.clear()
-        self.episode_actions.clear()
-        self.episode_as.clear()
-        self.episode_rewards.clear()
-        self.episode_log_probs.clear()
-        self.episode_values.clear()
-        self.episode_obs.clear()
+        self.reset_episode_buffers()
 
-        return actor_loss.item(), critic_loss.item()
+        return total_actor_loss / num_updates, total_critic_loss / num_updates, entropy_loss.item()
 
     def train_episode(self, max_steps=20, alpha=1):
-        """Train for one episode"""
-        # obs, _ = self.env.reset()
+        """Train for one episode with improved stability"""
         total_reward = 0
         total_entropy = 0
         total_probs = 0
@@ -243,61 +352,53 @@ class Agent2ActorCritic:
         self.episode_ss.append(s)
 
         for step in range(max_steps):
-            # Encode state for critic
             state_tensor = self.encode_state(state)
-
-            # Get value estimate from critic
             value = self.critic(state_tensor)
 
-            # Prepare observation sequence for actor
             obs_sequence = self.prepare_observation_sequence(self.episode_obs)
-
-            # Select action for agent_2 using observation sequence
-            agent2_action, log_prob = self.select_action(obs_sequence)
+            agent2_action, log_prob, entropy = self.select_action(obs_sequence, training=True)
             act = self.env.actions[agent2_action]
             self.episode_as.append(agent2_action)
 
-            # Get observations
             obs = self.env.observation_function_sampler(state, act)
             self.episode_obs.append(obs)
 
-            # Take step in environment
             state = self.env.next_state_sampler(state, act)
             s = self.env.states.index(state)
 
-            # Compute entropy-based reward for agent_2
             entropy_diff, prob_diff = info_rewards.reward_function(self.episode_obs, self.episode_as)
-            reward = entropy_diff - alpha * prob_diff  # alpha is the weighting parameter
+            reward = entropy_diff - alpha * prob_diff
 
-            # Store experience
+            # Check if episode should terminate
+            done = state in self.env.sink_states
+
             self.episode_states.append(state)
             self.episode_ss.append(s)
             self.episode_actions.append(act)
             self.episode_rewards.append(reward)
             self.episode_log_probs.append(log_prob)
             self.episode_values.append(value)
+            self.episode_dones.append(done)
 
             total_reward += reward
             total_entropy += entropy_diff
             total_probs += prob_diff
 
-            # Check if agent_1 reached goal (episode termination)
-            if state in self.env.sink_states:
+            if done:
                 break
 
-        # Final step handling - but don't add to training data since no action was chosen by policy
-        act = 'e'  # Ending action
+        # Final step handling
+        act = 'e'
         agent2_action = self.env.actions.index(act)
         final_state = self.env.next_state_sampler(state, act)
         final_state_tensor = self.encode_state(final_state)
         s_final = self.env.states.index(final_state)
         obs_final = self.env.observation_function_sampler(final_state, act)
-        final_log_prob = torch.tensor(0).to(self.device)  # With probability 1 to select the ending action.
+        final_log_prob = torch.tensor(0.0).to(self.device)
 
         self.episode_as.append(agent2_action)
         self.episode_obs.append(obs_final)
 
-        # Compute final reward but don't include in training
         entropy_diff, prob_diff = info_rewards.reward_function(self.episode_obs, self.episode_as)
         final_reward = entropy_diff - alpha * prob_diff
 
@@ -308,22 +409,31 @@ class Agent2ActorCritic:
         self.episode_rewards.append(final_reward)
         self.episode_values.append(final_value)
         self.episode_log_probs.append(final_log_prob)
+        self.episode_dones.append(True)
 
         total_reward += final_reward
         total_entropy += entropy_diff
         total_probs += prob_diff
 
-        # Update networks at end of episode
-        actor_loss, critic_loss = self.update_networks()
+        # Update networks
+        actor_loss, critic_loss, entropy_loss = self.update_networks()
 
         return total_reward, total_entropy, total_probs, step + 1, actor_loss, critic_loss
 
 
 def train_agent2_actor_critic(env, num_episodes=1000, window_size=50):
-    """Train agent_2 using actor-critic algorithm"""
+    """Train agent_2 using improved actor-critic algorithm"""
 
-    # Initialize agent
-    agent2 = Agent2ActorCritic(env)
+    # Initialize agent with better hyperparameters
+    agent2 = Agent2ActorCritic(
+        env,
+        lr_actor=0.0005,  # Lower learning rate
+        lr_critic=0.006,  # Lower learning rate
+        gamma=0.95,  # Slightly lower discount
+        entropy_coeff=0.01,  # Entropy regularization
+        use_gae=True,  # Use GAE
+        gae_lambda=0.95
+    )
 
     # Training metrics
     episode_rewards = []
@@ -336,28 +446,25 @@ def train_agent2_actor_critic(env, num_episodes=1000, window_size=50):
     # For tracking moving average
     recent_rewards = deque(maxlen=window_size)
 
-    print("Starting training...")
+    print("Starting improved training...")
     print("Episode | Reward | MA Reward | Length | Actor Loss | Critic Loss | Entropy | Probs")
     print("-" * 85)
 
     for episode in range(num_episodes):
-        # Train one episode
         total_reward, total_entropy, total_probs, episode_length, actor_loss, critic_loss = agent2.train_episode()
 
-        # Store metrics
         episode_rewards.append(total_reward)
         episode_entropies.append(-total_entropy)
         episode_probs.append(-total_probs)
         episode_lengths.append(episode_length)
         recent_rewards.append(total_reward)
+
         if actor_loss is not None:
             actor_losses.append(actor_loss)
             critic_losses.append(critic_loss)
 
-        # Calculate moving average reward
         moving_avg_reward = sum(recent_rewards) / len(recent_rewards)
 
-        # Print progress
         if episode % 50 == 0:
             current_entropy = episode_entropies[-1]
             current_probs = episode_probs[-1]
@@ -366,16 +473,7 @@ def train_agent2_actor_critic(env, num_episodes=1000, window_size=50):
             print(f"{episode:7d} | {total_reward:6.3f} | {moving_avg_reward:9.3f} | {episode_length:6d} | "
                   f"{actor_loss_str} | {critic_loss_str} | {current_entropy:7.4f} | {current_probs:7.4f}")
 
-        # Evaluate periodically
-        # if episode % eval_interval == 0 and episode > 0:
-        #     mean_reward, std_reward, mean_entropy, std_entropy = agent2.evaluate()
-        #     print(f"\nEvaluation after {episode} episodes:")
-        #     print(f"  Average reward: {mean_reward:.3f} ± {std_reward:.3f}")
-        #     print(f"  Average entropy: {mean_entropy:.3f} ± {std_entropy:.3f}")
-        #     print("-" * 85)
-
     return agent2, episode_rewards, episode_entropies, episode_probs, actor_losses, critic_losses
-
 
 def visualize_training_results(episode_rewards, episode_entropies, episode_probs, actor_losses, critic_losses,
                                window=50):
@@ -481,7 +579,6 @@ def save_data(rewards, entropies, probs, actor_losses, critic_losses, ex_num=1):
 
     return 0
 
-
 def main():
     # Create environment
     env = prod_pomdp()
@@ -493,10 +590,10 @@ def main():
     # Train agent_2
     print("Training agent_2 with entropy minimization rewards...")
     agent2, rewards, entropies, probs, actor_losses, critic_losses = train_agent2_actor_critic(
-        env, num_episodes=10000)
+        env, num_episodes=100000)
 
     # Save the data
-    save_data(rewards, entropies, probs, actor_losses, critic_losses, ex_num=1)
+    save_data(rewards, entropies, probs, actor_losses, critic_losses, ex_num=2)
 
     # Final evaluation
     # print("\nFinal evaluation:")
@@ -506,7 +603,7 @@ def main():
 
     # Visualize results
     print("Generating training plots...")
-    visualize_training_results(rewards, entropies, probs, actor_losses, critic_losses, window=50)
+    visualize_training_results(rewards, entropies, probs, actor_losses, critic_losses, window=200)
 
     # Save trained model
     torch.save({

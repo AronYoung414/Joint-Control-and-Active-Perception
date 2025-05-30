@@ -118,8 +118,8 @@ class InformationRewards:
         # log2_p_theta_s0_yk = np.log2(p_theta_s0_yk) if p_theta_s0_yk > 0 else 0
         temp_H_1 = p_zT1 * np.log2(p_zT1) if p_zT1 > 0 else 0
         temp_H_0 = p_zT0 * np.log2(p_zT0) if p_zT0 > 0 else 0
-        H = temp_H_1 + temp_H_0
-        return - H
+        H = - (temp_H_1 + temp_H_0)
+        return H, p_wT1
 
     def reward_function(self, y_list, a_list):
         # a_list = []
@@ -128,13 +128,13 @@ class InformationRewards:
         #     a_list.append(a)
         # For different length of observations, calculate the entropy difference
         if len(y_list) < 2:
-            return 0
+            return 0, 0
         elif len(y_list) == 2:
             return self.entropy(y_list, a_list, self.observable_operators)
         else:
-            entropy_before = self.entropy(y_list[0:-1], a_list[0:-1], self.observable_operators)
-            entropy_now = self.entropy(y_list, a_list, self.observable_operators)
-            return entropy_before - entropy_now
+            entropy_before, p_wT1_before = self.entropy(y_list[0:-1], a_list[0:-1], self.observable_operators)
+            entropy_now, p_wT1_now = self.entropy(y_list, a_list, self.observable_operators)
+            return (entropy_before - entropy_now), (p_wT1_before - p_wT1_now)
 
     def all_sequences_up_to_length(self, elements, max_length):
         """

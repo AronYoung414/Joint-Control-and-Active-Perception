@@ -1,4 +1,4 @@
-from observable_operator import *
+from policy_gradient_method_archive.observable_operator import *
 
 
 def p_sT_g_y(st_T, y, a_list, observable_operator):

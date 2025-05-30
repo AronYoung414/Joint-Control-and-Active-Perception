@@ -1,15 +1,15 @@
 import matplotlib.pyplot as plt
 import pickle
 
-with open(f'data_2/Values/thetaList_2', "rb") as pkl_rb_obj:
+with open(f'../data_2/Values/thetaList_2', "rb") as pkl_rb_obj:
     theta_list = pickle.load(pkl_rb_obj)
 # theta = theta_list[-1]
 
-with open(f'data_2/Values/PZList_2', "rb") as pkl_rb_obj:
+with open(f'../data_2/Values/PZList_2', "rb") as pkl_rb_obj:
     probs_list = pickle.load(pkl_rb_obj)
 # pz = PZlist[-1]
 
-with open(f'data_2/Values/entropy_2', "rb") as pkl_rb_obj:
+with open(f'../data_2/Values/entropy_2', "rb") as pkl_rb_obj:
     entropy_list = pickle.load(pkl_rb_obj)
 # entropy = entropy_list[-1]
 
