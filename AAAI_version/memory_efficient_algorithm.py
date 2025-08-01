@@ -404,7 +404,7 @@ def p_zT_g_y(y, a_list, observable_operator):
         v_T = prod_pomdp.states.index(st_T)
         # Use memory-efficient emission probability computation
         emiss_prob = prod_pomdp.get_emission_prob(st_T, act_T, o_T)
-        p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y[0:-1], a_list[0:-1], observable_operator)
+        p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y, a_list, observable_operator)
         p_zT1 += emiss_prob * p_vtp1_obs_g_acts / p_obs_g_acts
     p_zT0 = 1 - p_zT1
     p_wT1 = 0
@@ -412,7 +412,7 @@ def p_zT_g_y(y, a_list, observable_operator):
         v_T = prod_pomdp.states.index(st_T)
         # Use memory-efficient emission probability computation
         emiss_prob = prod_pomdp.get_emission_prob(st_T, act_T, o_T)
-        p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y[0:-1], a_list[0:-1], observable_operator)
+        p_vtp1_obs_g_acts = p_vtp1_obs_g_actions(v_T, y, a_list, observable_operator)
         p_wT1 += emiss_prob * p_vtp1_obs_g_acts / p_obs_g_acts
     return p_zT1, p_zT0, p_wT1
 
