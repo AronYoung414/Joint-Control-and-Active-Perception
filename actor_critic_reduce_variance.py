@@ -475,6 +475,7 @@ def train_agent2_actor_critic(env, num_episodes=1000, window_size=50):
 
     return agent2, episode_rewards, episode_entropies, episode_probs, actor_losses, critic_losses
 
+
 def visualize_training_results(episode_rewards, episode_entropies, episode_probs, actor_losses, critic_losses,
                                window=50):
     """Visualize training progress with moving averages"""
@@ -578,6 +579,7 @@ def save_data(rewards, entropies, probs, actor_losses, critic_losses, ex_num=1):
         pickle.dump(critic_losses, pkl_wb_obj)
 
     return 0
+
 
 def main():
     # Create environment

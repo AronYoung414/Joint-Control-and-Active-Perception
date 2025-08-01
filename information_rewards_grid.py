@@ -1,34 +1,36 @@
 import numpy as np
+from grid_world_example import Environment
 from product_pomdp import prod_pomdp
 # from observation_prefix_tree_for_graph import SimpleObservationSequenceEnumerator
 # from random import choices
 # from random import choice
 from itertools import permutations, product
+
+
 # import pickle
+# env = Environment()
 
 
 class InformationRewards:
 
     def __init__(self):
         self.prod_pomdp = prod_pomdp()
-        # self.trans = self.get_trans()
+        self.trans_mat_dict = self.get_transition_matrix()
         self.observable_operators = self.get_observable_operator()
-        print("observable operators done.")
-        # self.all_possible_sequences = self.all_sequences_up_to_length(self.prod_pomdp.observations, max_length=10)
-        # self.reward_dict = self.get_reward_dict()
-        # self.enumerator = SimpleObservationSequenceEnumerator(self.trans, start_state='0')
-        # self.get_reward_tree(max_length=4)
 
-    # def get_trans(self):
-    #     trans = {
-    #         '0': {'a': {'1': 0.5, '2': 0.5}, 'b': {'1': 0.5, '2': 0.5}, 'c': {'0': 1}},
-    #         '1': {'a': {'3': 0.5, '4': 0.5}, 'b': {'3': 0.5, '4': 0.5}, 'c': {'1': 1}},
-    #         '2': {'a': {'3': 0.5, '4': 0.5}, 'b': {'3': 0.5, '4': 0.5}, 'c': {'2': 1}},
-    #         '3': {'a': {'5': 1}, 'b': {'1': 0.9, '2': 0.1}, 'c': {'3': 1}},
-    #         '4': {'a': {'5': 1}, 'b': {'1': 0.1, '2': 0.9}, 'c': {'4': 1}},
-    #         '5': {'a': {'3': 0.9, '4': 0.1}, 'b': {'3': 0.1, '4': 0.9}, 'c': {'5': 1}}
-    #     }
-    #     return trans
+    def get_transition_matrix(self):
+        tm_dict = {}
+        for act_t in self.prod_pomdp.actions:
+            tm = np.zeros([self.prod_pomdp.state_size, self.prod_pomdp.state_size])
+            for i in range(self.prod_pomdp.state_size):
+                for j in range(self.prod_pomdp.state_size):
+                    st = self.prod_pomdp.states[i]
+                    st_prime = self.prod_pomdp.states[j]
+                    if st in self.prod_pomdp.next_supp[st_prime][act_t]:
+                        tm[i, j] = self.prod_pomdp.transition[st_prime][act_t][st]
+            tm_dict[act_t] = tm
+        print("Transition matrix done.")
+        return tm_dict
 
     def get_observable_operator(self):
         oo_dict = {}
@@ -47,6 +49,7 @@ class InformationRewards:
                                        self.prod_pomdp.emiss[st_prime][act_t][
                                            obs_t]
                 oo_dict[obs_t][act_t] = oo
+        print("Observable operators done.")
         return oo_dict
 
     def p_obs_g_actions(self, y, a_list, observable_operator):

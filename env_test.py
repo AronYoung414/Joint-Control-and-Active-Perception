@@ -1,13 +1,13 @@
 import numpy as np
 import pickle
 from grid_world_example import Environment
-from pomdp_grid import pomdp
+from pomdp_grid import POMDP
 from product_pomdp import prod_pomdp
 from random import choices
 from random import choice
 
 grid_world = Environment()
-pomdp = pomdp()
+pomdp = POMDP()
 prod_pomdp = prod_pomdp()
 
 
